@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.5)
 set(DVERSION 5.5)
 # set project name
 project(dtkwidget 
-	VERSION ${DVERSION}
-	LANGUAGES CXX
+  VERSION ${DVERSION}
+  LANGUAGES CXX
 )
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -49,7 +49,7 @@ set(ICONTHEME widgets/assets/icons/dtk-icon-theme.qrc)
 #file(GLOB UTILPRIVATE util/private/*)
 # define if is LINUX
 if (UNIX AND NOT APPLE)
-	set(LINUX TRUE)
+  set(LINUX TRUE)
 endif()
 
 #if(LINUX)
@@ -62,8 +62,8 @@ file(GLOB NOTIFICATION widgets/private/startupnotifications/*)
 add_definitions(-DSN_API_NOT_YET_FROZEN)
 find_package(Qt5 COMPONENTS X11Extras)
 find_package(Qt5 COMPONENTS DBus)
-find_package(Qt5 REQUIRED COMPONENTS WaylandCompositor) 
-find_package(Qt5 REQUIRED COMPONENTS XcbQpa) 
+#find_package(Qt5 REQUIRED COMPONENTS WaylandCompositor) 
+#find_package(Qt5 REQUIRED COMPONENTS XcbQpa) 
 add_library(${PROJECT_NAME} SHARED
 	# Header
 
@@ -152,9 +152,9 @@ add_library(${PROJECT_NAME} SHARED
   widgets/diconbutton.h
   widgets/dimagebutton.cpp
   widgets/dimagebutton.h
-	widgets/dinputdialog.cpp
-	widgets/dinputdialog.h
-	#  widgets/dinputdialog_p.h
+  widgets/dinputdialog.cpp
+  widgets/dinputdialog.h
+  #  widgets/dinputdialog_p.h
   widgets/dipv4lineedit.cpp
   widgets/dipv4lineedit.h
   widgets/dkeysequenceedit.cpp
@@ -267,16 +267,16 @@ add_library(${PROJECT_NAME} SHARED
   widgets/dwindowquitfullbutton.cpp
   widgets/dwindowquitfullbutton.h
   widgets/dx11window.h
-
-	${PRIVATEMPRISHEADER}
-	${PRIVATEMPRISSOURCE}
-	widgets/private/keyboardmonitor/dkeyboardmonitor.h
-	widgets/private/keyboardmonitor/dkeyboardmonitor.cpp
-
-	${PROVATESOURCE}
-	${PROVATEHEADER}
-	${SETTIONS}
-	${NOTIFICATION}
+  
+  ${PRIVATEMPRISHEADER}
+  ${PRIVATEMPRISSOURCE}
+  widgets/private/keyboardmonitor/dkeyboardmonitor.h
+  widgets/private/keyboardmonitor/dkeyboardmonitor.cpp
+  
+  ${PROVATESOURCE}
+  ${PROVATEHEADER}
+  ${SETTIONS}
+  ${NOTIFICATION}
   util/dfileiconprovider.h 
   util/dthumbnailprovider.h 
   util/dwidgetutil.h 
@@ -287,54 +287,54 @@ add_library(${PROJECT_NAME} SHARED
   util/daccessibilitychecker.h
   util/dregionmonitor.h 
   util/private/dregionmonitor_p.h
-
+  
   util/dfileiconprovider.cpp 
   util/dthumbnailprovider.cpp 
   util/dwidgetutil.cpp 
   util/dhidpihelper.cpp 
   util/dapplicationsettings.cpp 
   util/daccessibilitychecker.cpp	
-	util/ddesktopservices_linux.cpp 
+  util/ddesktopservices_linux.cpp 
   util/dtrashmanager_linux.cpp 
   util/dregionmonitor.cpp
-
-	util/private/dregionmonitor_p.h
-	dtkwidget_global.h
-	${ICONS}
-	${ICONTHEME}
+  
+  util/private/dregionmonitor_p.h
+  dtkwidget_global.h
+  ${ICONS}
+  ${ICONTHEME}
 )
 target_link_libraries(
-	${PROJECT_NAME} PRIVATE
-	Qt5::Widgets
-	Qt5::Network
-	Qt5::Concurrent
-	Qt5::Core
-	Qt5::DBus
-	Qt5::X11Extras
-	Qt5::PrintSupport
-	Qt5::WaylandCompositor
-	Qt5::XcbQpa
-	Qt5::Multimedia
-	${DtkGui_LIBRARIES}
-	${DtkCore_LIBRARIES}
-	${QGSettings_LIBRARIES}
-	${STARUPNOTIFICATION_LIBRARIES}
-	${XEXT_LIBRARIES}
-	${XI_LIBRARIES}
+  ${PROJECT_NAME} PRIVATE
+  Qt5::Widgets
+  Qt5::Network
+  Qt5::Concurrent
+  Qt5::Core
+  Qt5::DBus
+  Qt5::X11Extras
+  Qt5::PrintSupport
+  #Qt5::WaylandCompositor
+  #Qt5::XcbQpa
+  Qt5::Multimedia
+  ${DtkGui_LIBRARIES}
+  ${DtkCore_LIBRARIES}
+  ${QGSettings_LIBRARIES}
+  ${STARUPNOTIFICATION_LIBRARIES}
+  ${XEXT_LIBRARIES}
+  ${XI_LIBRARIES}
 
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
-	widgets/
-	widgets/private/startupnotifications/
-	util/
-	platforms/x11
-	${Qt5Gui_PRIVATE_INCLUDE_DIRS}
-	${Qt5Widgets_PRIVATE_INCLUDE_DIRS}
-	${Qt5PrintSupport_PRIVATE_INCLUDE_DIRS}
-	${QGSettings_INCLUDE_DIRS}
-	${STARUPNOTIFICATION_INCLUDE_DIRS}
-	${XEXT_INCLUDE_DIRS}
-	${XI_INCLUDE_DIRS}
+  widgets/
+  widgets/private/startupnotifications/
+  util/
+  platforms/x11
+  ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
+  ${Qt5Widgets_PRIVATE_INCLUDE_DIRS}
+  ${Qt5PrintSupport_PRIVATE_INCLUDE_DIRS}
+  ${QGSettings_INCLUDE_DIRS}
+  ${STARUPNOTIFICATION_INCLUDE_DIRS}
+  ${XEXT_INCLUDE_DIRS}
+  ${XI_INCLUDE_DIRS}
 )
 target_link_directories(${PROJECT_NAME} PUBLIC .)
 message(STATUS ${Qt5Gui_PRIVATE_INCLUDE_DIRS})

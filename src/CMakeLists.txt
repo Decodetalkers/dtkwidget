@@ -17,7 +17,7 @@ set(CMAKE_AUTORCC ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # find_package 
 find_package(DtkCMake REQUIRED)
 find_package(DtkGui REQUIRED)
@@ -97,7 +97,6 @@ add_library(${PROJECT_NAME} SHARED
   widgets/dblureffectwidget.h
   widgets/dboxwidget.cpp
   widgets/dboxwidget.h
-  widgets/dbus
   widgets/dbuttonbox.cpp
   widgets/dbuttonbox.h
   widgets/dcircleprogress.cpp
@@ -153,9 +152,9 @@ add_library(${PROJECT_NAME} SHARED
   widgets/diconbutton.h
   widgets/dimagebutton.cpp
   widgets/dimagebutton.h
-	#widgets/dinputdialog.cpp
-  #widgets/dinputdialog.h
-  #widgets/dinputdialog_p.h
+	widgets/dinputdialog.cpp
+	widgets/dinputdialog.h
+	#  widgets/dinputdialog_p.h
   widgets/dipv4lineedit.cpp
   widgets/dipv4lineedit.h
   widgets/dkeysequenceedit.cpp

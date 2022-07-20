@@ -55,11 +55,11 @@ public:
     QWidget *iconWidget;
     QLabel *label;
 
-//#ifdef ENABLE_AI
+#ifdef ENABLE_AI
     QAction *voiceAction = nullptr;
     QAudioInput *voiceInput = nullptr;
     VoiceDevice *voiceIODevice = nullptr;
-//#endif
+#endif
 
 protected:
     Q_DECLARE_PUBLIC(DSearchEdit)

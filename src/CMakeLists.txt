@@ -44,11 +44,18 @@ file(GLOB WIDGETPROVATESOURCE widgets/private/*.cpp)
 set(ICONS widgets/icons.qrc)
 set(ICONTHEME widgets/assets/icons/dtk-icon-theme.qrc)
 file(GLOB UTILHEAEDER ../include/dtkwidget/util/*.h)
-#file(GLOB UTILPRIVATE util/private/*)
-# define if is LINUX
 if (UNIX AND NOT APPLE)
   set(LINUX TRUE)
 endif()
+
+set(CONFIGNAME ../include/dtkwidget/global/dtkwidget_config.h)
+file(WRITE ${CONFIGNAME} "// it is auto make config\n")
+file(GLOB CONFIGSOURCE ../include/dtkwidget/DWidget/*)
+foreach(FILENAME ${CONFIGSOURCE})
+	get_filename_component(thefile ${FILENAME} NAME)
+	file(APPEND ${CONFIGNAME} "#define DTKWIDGET_CLASS_${thefile}\n")
+endforeach()
+
 
 #if(LINUX)
 file(GLOB PRIVATEMPRISHEADER widgets/private/mpris/*.h)
@@ -57,16 +64,17 @@ file(GLOB WIDGETSOURCE widgets/*.cpp)
 file(GLOB WIDGETHEADER ../include/dtkwidget/widgets/*)
 file(GLOB SETTIONS widgets/private/settings/*)
 file(GLOB NOTIFICATION widgets/private/startupnotifications/*)
+
+
+
 add_definitions(-DSN_API_NOT_YET_FROZEN)
 find_package(Qt5 COMPONENTS X11Extras)
 find_package(Qt5 COMPONENTS DBus)
-#find_package(Qt5 REQUIRED COMPONENTS WaylandCompositor) 
-#find_package(Qt5 REQUIRED COMPONENTS XcbQpa) 
 add_library(${PROJECT_NAME} SHARED
-	# Header
+  # Header
 
-	#WIDGETS
-	${WIDGETHEADER}
+  #WIDGETS
+  ${WIDGETHEADER}
   ${WIDGETSOURCE}
   ${PRIVATEMPRISHEADER}
   ${PRIVATEMPRISSOURCE}

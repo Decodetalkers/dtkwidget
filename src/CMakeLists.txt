@@ -54,7 +54,7 @@ endif()
 file(GLOB PRIVATEMPRISHEADER widgets/private/mpris/*.h)
 file(GLOB PRIVATEMPRISSOURCE widgets/private/mpris/*.cpp)
 file(GLOB WIDGETSOURCE widgets/*.cpp)
-file(GLOB WIDGETHEADER widgets/*.h)
+file(GLOB WIDGETHEADER ../include/widgets/*.h)
 file(GLOB SETTIONS widgets/private/settings/*)
 file(GLOB NOTIFICATION widgets/private/startupnotifications/*)
 add_definitions(-DSN_API_NOT_YET_FROZEN)
@@ -66,7 +66,7 @@ add_library(${PROJECT_NAME} SHARED
 	# Header
 
 	#WIDGETS
-  ${WIDGETHEADER}
+	${WIDGETHEADER}
   ${WIDGETSOURCE}
   ${PRIVATEMPRISHEADER}
   ${PRIVATEMPRISSOURCE}
@@ -119,7 +119,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 	widgets/
   util/
 	../include/DWidget/
-	
+  ../include/widgets/
 	widgets/private/startupnotifications/
   platforms/x11
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}

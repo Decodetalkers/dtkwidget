@@ -82,5 +82,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ../../../src/widgets/
   ../../../src/util/
 	../../../include/DWidget/
+	../../../include/widgets/
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
 )

@@ -14,8 +14,8 @@ set(CMAKE_CXX_FLAGS "-fno-access-control")
 add_compile_options(-fsanitize=address)
 add_link_options(-fsanitize=address)
 
-find_package(PkgConfig REQUIRED)
-pkg_search_module(GLIB REQUIRED glib-2.0)
+#find_package(PkgConfig REQUIRED)
+#pkg_search_module(GLIB REQUIRED glib-2.0)
 
 find_package(Qt5 REQUIRED COMPONENTS PrintSupport Concurrent Widgets Test Core DBus REQUIRED)
 find_package(GTest REQUIRED)
@@ -25,28 +25,29 @@ find_package(DtkCore REQUIRED)
 file(GLOB WIDGET_TEST testcases/widgets/*.cpp)
 
 add_executable(${PROJECT_NAME}
-	main.cpp
-	${WIDGET_TEST}
+  main.cpp
+  ${WIDGET_TEST}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE 
-	Qt5::Test 
-	Qt5::Widgets
-	Qt5::Core
-	Qt5::DBus
+  Qt5::Test 
+  Qt5::Widgets
+  Qt5::Core
+  Qt5::DBus
   Qt5::PrintSupport
   Qt5::Concurrent
-	${GLIB_LDFLAGS}
-	${DtkGui_LIBRARIES}
+	#${GLIB_LDFLAGS}
+  ${DtkGui_LIBRARIES}
   ${DtkCore_LIBRARIES}
-	${GTEST_LIBRARIES}
-	dtkwidget
+  ${GTEST_LIBRARIES}
+  dtkwidget
+	-lpthread
 )
 target_include_directories(${PROJECT_NAME} PUBLIC 
-	../include/dtkwidget/util/
-	../include/dtkwidget/global/
-	../include/dtkwidget/DWidget/
-	../include/dtkwidget/widgets/
-	../src/widgets/
-	 ${GLIB_INCLUDE_DIRS}
+  ../include/dtkwidget/util/
+  ../include/dtkwidget/global/
+  ../include/dtkwidget/DWidget/
+  ../include/dtkwidget/widgets/
+  ../src/widgets/
+	#${GLIB_INCLUDE_DIRS}
 )

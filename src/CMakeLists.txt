@@ -125,7 +125,7 @@ target_link_libraries(
   ${XI_LIBRARIES}
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
-	../include/dtkwidget/DWidget/
+  ../include/dtkwidget/DWidget/
   ../include/dtkwidget/util/
   ../include/dtkwidget/widgets/
   ../include/dtkwidget/global/
@@ -140,6 +140,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ${XEXT_INCLUDE_DIRS}
   ${XI_INCLUDE_DIRS}
 )
+install(TARGETS ${BIN_NAME} DESTINATION share/)
 #target_link_directories(${PROJECT_NAME} PUBLIC .)
 #message(STATUS ${Qt5Gui_PRIVATE_INCLUDE_DIRS})
 #endif(LINUX)

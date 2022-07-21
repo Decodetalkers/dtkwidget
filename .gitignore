@@ -29,3 +29,4 @@ src/qt_lib_dtk*.pri
 build
 .cache
 # cmake files
+asan*

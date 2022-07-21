@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.5)
 project(collections)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -7,7 +7,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
@@ -72,16 +72,16 @@ add_executable(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME} PRIVATE 
   Qt5::Widgets
   Qt5::Core
-	Qt5::Svg
-	Qt5::PrintSupport
-	dtkwidget
-	${DtkGui_LIBRARIES}
-	${DtkCore_LIBRARIES}
+  Qt5::Svg
+  Qt5::PrintSupport
+  dtkwidget
+  ${DtkGui_LIBRARIES}
+  ${DtkCore_LIBRARIES}
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
   ../../../include/dtkwidget/DWidget/
-	../../../include/dtkwidget/widgets/
-	../../../include/dtkwidget/util/
-	../../../include/dtkwidget/global/
+  ../../../include/dtkwidget/widgets/
+  ../../../include/dtkwidget/util/
+  ../../../include/dtkwidget/global/
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
 )

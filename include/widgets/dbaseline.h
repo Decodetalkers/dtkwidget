@@ -15,42 +15,44 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#ifndef DBASELINE_H
+#define DBASELINE_H
 
 #include <QWidget>
-#include <QStandardItemModel>
-#include <QStackedWidget>
-#include <qtypetraits.h>
-#include <DListView>
+#include <QLabel>
+#include <QHBoxLayout>
 
-#include "dmainwindow.h"
 #include <dtkwidget_global.h>
+#include <dconstants.h>
 
-class PageWindowInterface;
+DWIDGET_BEGIN_NAMESPACE
 
-DWIDGET_USE_NAMESPACE
-
-class MainWindow : public DMainWindow
+class LIBDTKWIDGETSHARED_EXPORT DBaseLine : public QLabel
 {
     Q_OBJECT
-
 public:
-    MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    explicit DBaseLine(QWidget *parent = 0);
 
-protected Q_SLOTS:
-    void menuItemInvoked(QAction *action);
-    void onCurrentIndexChanged(const QModelIndex &index);
+    void setLeftContent(QWidget *content);
+    void setRightContent(QWidget *content);
+
+    QBoxLayout *leftLayout();
+    QBoxLayout *rightLayout();
+
+    void setLeftMargin(int margin);
+    void setRightMargin(int margin);
+    int leftMargin() const;
+    int rightMargin() const;
 
 private:
-    void initModel();
-    void registerPage(const QString &pageName, PageWindowInterface *pPageWindow, const QIcon &icon = QIcon());
+    QHBoxLayout *m_mainLayout = NULL;
+    QHBoxLayout *m_leftLayout= NULL;
+    QHBoxLayout *m_rightLayout = NULL;
 
-private:
-    QStackedWidget *m_pStackedWidget;
-    DListView *m_pListView;
-    QStandardItemModel *m_pListViewModel;
+    int m_leftMargin = 10;
+    int m_rightMargin = HEADER_RIGHT_MARGIN;
 };
 
-#endif // MAINWINDOW_H
+DWIDGET_END_NAMESPACE
+
+#endif // DBASELINE_H

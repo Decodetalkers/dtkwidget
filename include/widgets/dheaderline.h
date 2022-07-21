@@ -15,42 +15,35 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#ifndef DHEADERLINE_H
+#define DHEADERLINE_H
 
 #include <QWidget>
-#include <QStandardItemModel>
-#include <QStackedWidget>
-#include <qtypetraits.h>
-#include <DListView>
+#include <QLabel>
 
-#include "dmainwindow.h"
 #include <dtkwidget_global.h>
+#include <dbaseline.h>
 
-class PageWindowInterface;
+DWIDGET_BEGIN_NAMESPACE
 
-DWIDGET_USE_NAMESPACE
-
-class MainWindow : public DMainWindow
+class LIBDTKWIDGETSHARED_EXPORT DHeaderLine : public DBaseLine
 {
     Q_OBJECT
-
 public:
-    MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    explicit DHeaderLine(QWidget *parent = 0);
+    void setTitle(const QString &title);
+    void setContent(QWidget *content);
 
-protected Q_SLOTS:
-    void menuItemInvoked(QAction *action);
-    void onCurrentIndexChanged(const QModelIndex &index);
-
-private:
-    void initModel();
-    void registerPage(const QString &pageName, PageWindowInterface *pPageWindow, const QIcon &icon = QIcon());
+    QString title() const;
 
 private:
-    QStackedWidget *m_pStackedWidget;
-    DListView *m_pListView;
-    QStandardItemModel *m_pListViewModel;
+    void setLeftContent(QWidget *content);
+    void setRightContent(QWidget *content);
+
+private:
+    QLabel *m_titleLabel = NULL;
 };
 
-#endif // MAINWINDOW_H
+DWIDGET_END_NAMESPACE
+
+#endif // DHEADERLINE_H

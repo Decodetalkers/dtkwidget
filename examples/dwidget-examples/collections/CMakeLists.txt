@@ -80,7 +80,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
   ../../../src/widgets/
-  ../../../src/
   ../../../src/util/
+	../../../include/DWidget/
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
 )

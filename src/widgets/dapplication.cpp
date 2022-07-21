@@ -70,7 +70,7 @@
 #endif
 
 #ifdef Q_OS_LINUX
-#include "startupnotificationmonitor.h"
+#include "private/startupnotifications/startupnotificationmonitor.h"
 
 #include <DDBusSender>
 

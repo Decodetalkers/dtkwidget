@@ -43,7 +43,7 @@ file(GLOB WIDGETPROVATESOURCE widgets/private/*.cpp)
 
 set(ICONS widgets/icons.qrc)
 set(ICONTHEME widgets/assets/icons/dtk-icon-theme.qrc)
-file(GLOB UTILHEAEDER util/*.h)
+file(GLOB UTILHEAEDER ../include/dtkwidget/util/*.h)
 #file(GLOB UTILPRIVATE util/private/*)
 # define if is LINUX
 if (UNIX AND NOT APPLE)
@@ -54,7 +54,7 @@ endif()
 file(GLOB PRIVATEMPRISHEADER widgets/private/mpris/*.h)
 file(GLOB PRIVATEMPRISSOURCE widgets/private/mpris/*.cpp)
 file(GLOB WIDGETSOURCE widgets/*.cpp)
-file(GLOB WIDGETHEADER ../include/widgets/*.h)
+file(GLOB WIDGETHEADER ../include/dtkwidget/widgets/*)
 file(GLOB SETTIONS widgets/private/settings/*)
 file(GLOB NOTIFICATION widgets/private/startupnotifications/*)
 add_definitions(-DSN_API_NOT_YET_FROZEN)
@@ -113,14 +113,14 @@ target_link_libraries(
   ${STARUPNOTIFICATION_LIBRARIES}
   ${XEXT_LIBRARIES}
   ${XI_LIBRARIES}
-
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
-	widgets/
-  util/
-	../include/DWidget/
-  ../include/widgets/
-	widgets/private/startupnotifications/
+	../include/dtkwidget/DWidget/
+  ../include/dtkwidget/util/
+  ../include/dtkwidget/widgets/
+  ../include/dtkwidget/global/
+  ../include/
+	#widgets/private/startupnotifications/
   platforms/x11
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
   ${Qt5Widgets_PRIVATE_INCLUDE_DIRS}
@@ -130,8 +130,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ${XEXT_INCLUDE_DIRS}
   ${XI_INCLUDE_DIRS}
 )
-target_link_directories(${PROJECT_NAME} PUBLIC .)
-message(STATUS ${Qt5Gui_PRIVATE_INCLUDE_DIRS})
+#target_link_directories(${PROJECT_NAME} PUBLIC .)
+#message(STATUS ${Qt5Gui_PRIVATE_INCLUDE_DIRS})
 #endif(LINUX)
 
 #if(APPLE)

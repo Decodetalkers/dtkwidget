@@ -79,9 +79,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 	${DtkCore_LIBRARIES}
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
-  ../../../src/widgets/
-  ../../../src/util/
-	../../../include/DWidget/
-	../../../include/widgets/
+  ../../../include/dtkwidget/DWidget/
+	../../../include/dtkwidget/widgets/
+	../../../include/dtkwidget/util/
+	../../../include/dtkwidget/global/
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
 )

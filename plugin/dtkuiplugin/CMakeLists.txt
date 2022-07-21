@@ -15,7 +15,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(DtkCMake REQUIRED)
 
 find_package(DtkGui REQUIRED)
-find_package(DtkWidget REQUIRED)
+#find_package(DtkWidget REQUIRED)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
@@ -30,7 +30,9 @@ add_library(
 )
 target_link_libraries(
 	${PROJECT_NAME} PRIVATE 
-	${DtkWidget_LIBRARIES}
+	${DtkGui_LIBRARIES}
+	#${DtkWidget_LIBRARIES}
+	dtkwidget
 	Qt${QT_VERSION_MAJOR}::Widgets
 	Qt${QT_VERSION_MAJOR}::Core
 	Qt${QT_VERSION_MAJOR}::UiPlugin
@@ -38,4 +40,8 @@ target_link_libraries(
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${DtkWidget_INCLUDE_DIRS}
     ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
+    ../../../include/dtkwidget/DWidget/
+    ../../../include/dtkwidget/widgets/
+    ../../../include/dtkwidget/util/
+    ../../../include/dtkwidget/global/
 )

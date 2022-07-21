@@ -51,9 +51,10 @@ endif()
 set(CONFIGNAME ../include/dtkwidget/global/dtkwidget_config.h)
 file(WRITE ${CONFIGNAME} "// it is auto make config\n")
 file(GLOB CONFIGSOURCE ../include/dtkwidget/DWidget/*)
+
 foreach(FILENAME ${CONFIGSOURCE})
-	get_filename_component(thefile ${FILENAME} NAME)
-	file(APPEND ${CONFIGNAME} "#define DTKWIDGET_CLASS_${thefile}\n")
+  get_filename_component(thefile ${FILENAME} NAME)
+  file(APPEND ${CONFIGNAME} "#define DTKWIDGET_CLASS_${thefile}\n")
 endforeach()
 
 
@@ -68,6 +69,8 @@ file(GLOB NOTIFICATION widgets/private/startupnotifications/*)
 
 
 add_definitions(-DSN_API_NOT_YET_FROZEN)
+#TrainslateDir
+add_definitions(-DDWIDGET_TRANSLATIONS_DIR="${PROJECT_NAME}/DWidget/translate")
 find_package(Qt5 COMPONENTS X11Extras)
 find_package(Qt5 COMPONENTS DBus)
 add_library(${PROJECT_NAME} SHARED
@@ -99,7 +102,6 @@ add_library(${PROJECT_NAME} SHARED
   util/dtrashmanager_linux.cpp 
   util/dregionmonitor.cpp
 
-	#dtkwidget_global.h
   ${ICONS}
   ${ICONTHEME}
 )

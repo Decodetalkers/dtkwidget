@@ -7,7 +7,7 @@ project(dtkwidget
   VERSION ${DVERSION}
   LANGUAGES CXX
 )
-
+set(BIN_NAME ${PROJECT_NAME})
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -130,7 +130,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ../include/dtkwidget/widgets/
   ../include/dtkwidget/global/
   ../include/
-	#widgets/private/startupnotifications/
+  #widgets/private/startupnotifications/
   platforms/x11
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
   ${Qt5Widgets_PRIVATE_INCLUDE_DIRS}
@@ -141,6 +141,12 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ${XI_INCLUDE_DIRS}
 )
 install(TARGETS ${BIN_NAME} DESTINATION share/)
+install(FILES ../include/dtkwidget/DWidget* DESTINATION include/libdtk/DWidget/)
+install(FILES ../include/dtkwidget/util/* DESTINATION include/libdtk/DWidget/)
+install(FILES ../include/dtkwidget/global/* DESTINATION include/libdtk/DWidget/)
+install(FILES ../include/dtkwidget/widgets/* DESTINATION include/libdtk/DWidget/)
+
+install(FILES translations DESTINATION share/libdtk/DWidget)
 #target_link_directories(${PROJECT_NAME} PUBLIC .)
 #message(STATUS ${Qt5Gui_PRIVATE_INCLUDE_DIRS})
 #endif(LINUX)

@@ -3,6 +3,7 @@ project(dtk-svgc
   VERSION 1.1
   LANGUAGES CXX 
 )
+set(BIN_NAME ${PROJECT_NAME})
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -34,3 +35,4 @@ target_link_libraries(
   ${DtkGui_LIBRARIES}
   ${DtkCore_LIBRARIES}
 )
+install(TARGETS ${BIN_NAME} DESTINATION lib/libdtk/DWidget/bin)

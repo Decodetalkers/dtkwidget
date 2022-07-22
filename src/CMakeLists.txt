@@ -1,7 +1,7 @@
 # SET the version
 cmake_minimum_required(VERSION 3.5)
 
-set(DVERSION 5.5)
+set(DVERSION "5.5.22")
 # set project name
 project(dtkwidget 
   VERSION ${DVERSION}
@@ -140,13 +140,16 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ${XEXT_INCLUDE_DIRS}
   ${XI_INCLUDE_DIRS}
 )
-install(TARGETS ${BIN_NAME} DESTINATION share/)
-install(FILES ../include/dtkwidget/DWidget* DESTINATION include/libdtk/DWidget/)
-install(FILES ../include/dtkwidget/util/* DESTINATION include/libdtk/DWidget/)
-install(FILES ../include/dtkwidget/global/* DESTINATION include/libdtk/DWidget/)
-install(FILES ../include/dtkwidget/widgets/* DESTINATION include/libdtk/DWidget/)
+set_target_properties(${BIN_NAME} PROPERTIES
+    VERSION ${CMAKE_PROJECT_VERSION}
+    SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR})
+install(TARGETS ${BIN_NAME} DESTINATION lib/)
+install(DIRECTORY ../include/dtkwidget/DWidget/ DESTINATION include/libdtk/DWidget/ FILES_MATCHING PATTERN "*")
+install(DIRECTORY ../include/dtkwidget/util/ DESTINATION include/libdtk/DWidget/ FILES_MATCHING PATTERN "*")
+install(DIRECTORY ../include/dtkwidget/global/ DESTINATION include/libdtk/DWidget/ FILES_MATCHING PATTERN "*")
+install(DIRECTORY ../include/dtkwidget/widgets/ DESTINATION include/libdtk/DWidget/ FILES_MATCHING PATTERN "*")
 
-install(FILES translations/* DESTINATION share/libdtk/DWidget/translations)
+install(DIRECTORY translations DESTINATION share/libdtk/DWidget/)
 #target_link_directories(${PROJECT_NAME} PUBLIC .)
 #message(STATUS ${Qt5Gui_PRIVATE_INCLUDE_DIRS})
 #endif(LINUX)

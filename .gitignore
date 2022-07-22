@@ -30,3 +30,7 @@ build
 .cache
 # cmake files
 asan*
+archlinux/source.tar.gz
+archlinux/src
+archlinux/pkg
+archlinux/*.pkg.tar.zst

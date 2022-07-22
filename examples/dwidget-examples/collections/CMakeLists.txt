@@ -85,4 +85,4 @@ target_include_directories(${BIN_NAME} PUBLIC
   ../../../include/dtkwidget/global/
   ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
 )
-install(TARGETS ${BIN_NAME} DESTINATION lib/libdtk/DWidget/bin/)
+install(TARGETS ${BIN_NAME} DESTINATION lib/libdtk/DWidget/examples/)

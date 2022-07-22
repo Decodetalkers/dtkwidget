@@ -1,13 +1,7 @@
 # SET the version
-cmake_minimum_required(VERSION 3.5)
+#cmake_minimum_required(VERSION 3.5)
 
-set(DVERSION "5.5.22")
-# set project name
-project(dtkwidget 
-  VERSION ${DVERSION}
-  LANGUAGES CXX
-)
-set(BIN_NAME ${PROJECT_NAME})
+set(LIB_NAME ${PROJECT_NAME})
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -106,7 +100,7 @@ add_library(${PROJECT_NAME} SHARED
   ${ICONTHEME}
 )
 target_link_libraries(
-  ${PROJECT_NAME} PRIVATE
+  ${LIB_NAME} PRIVATE
   Qt5::Widgets
   Qt5::Network
   Qt5::Concurrent
@@ -124,7 +118,7 @@ target_link_libraries(
   ${XEXT_LIBRARIES}
   ${XI_LIBRARIES}
 )
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(${LIB_NAME} PUBLIC
   ../include/dtkwidget/DWidget/
   ../include/dtkwidget/util/
   ../include/dtkwidget/widgets/
@@ -140,10 +134,11 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ${XEXT_INCLUDE_DIRS}
   ${XI_INCLUDE_DIRS}
 )
-set_target_properties(${BIN_NAME} PROPERTIES
+set_target_properties(${LIB_NAME} PROPERTIES
     VERSION ${CMAKE_PROJECT_VERSION}
-    SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR})
-install(TARGETS ${BIN_NAME} DESTINATION lib/)
+    SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
+)
+install(TARGETS ${LIB_NAME} DESTINATION lib/)
 install(DIRECTORY ../include/dtkwidget/DWidget/ DESTINATION include/libdtk/DWidget/ FILES_MATCHING PATTERN "*")
 install(DIRECTORY ../include/dtkwidget/util/ DESTINATION include/libdtk/DWidget/ FILES_MATCHING PATTERN "*")
 install(DIRECTORY ../include/dtkwidget/global/ DESTINATION include/libdtk/DWidget/ FILES_MATCHING PATTERN "*")

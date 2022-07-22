@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.5)
-project(collections)
+#cmake_minimum_required(VERSION 3.5)
+#project(collections)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-set(BIN_NAME ${PROJECT_NAME})
+set(BIN_NAME collections)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -24,7 +24,7 @@ find_package(Qt5 REQUIRED COMPONENTS PrintSupport)
 set(IMAGES images.qrc)
 set(RESCOUCES resources.qrc)
 set(THEME icons/theme-icons.qrc)
-add_executable(${PROJECT_NAME}
+add_executable(${BIN_NAME}
   ${IMAGES}
   ${RESCOUCES}
   ${THEME}
@@ -69,7 +69,7 @@ add_executable(${PROJECT_NAME}
   lcdnumberexample.cpp 
   menuexample.cpp
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE 
+target_link_libraries(${BIN_NAME} PRIVATE 
   Qt5::Widgets
   Qt5::Core
   Qt5::Svg
@@ -78,7 +78,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   ${DtkGui_LIBRARIES}
   ${DtkCore_LIBRARIES}
 )
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(${BIN_NAME} PUBLIC
   ../../../include/dtkwidget/DWidget/
   ../../../include/dtkwidget/widgets/
   ../../../include/dtkwidget/util/

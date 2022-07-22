@@ -1,9 +1,5 @@
-cmake_minimum_required(VERSION 3.5)
-project(dtk-svgc
-  VERSION 1.1
-  LANGUAGES CXX 
-)
-set(BIN_NAME ${PROJECT_NAME})
+#cmake_minimum_required(VERSION 3.5)
+set(BIN_NAME dtk-svgc)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -24,11 +20,11 @@ find_package(Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt5 REQUIRED COMPONENTS Svg)
 
 add_executable(
-  ${PROJECT_NAME}
+  ${BIN_NAME}
   svgc/main.cpp
 )
 target_link_libraries(
-  ${PROJECT_NAME} PRIVATE
+  ${BIN_NAME} PRIVATE
   Qt5::Widgets 
   Qt5::Core
   Qt5::Svg

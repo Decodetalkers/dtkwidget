@@ -6,9 +6,19 @@
 #define DABOUTDIALOG_P_H
 
 #include <DAboutDialog>
+#include <QLabel>
+
 #include "ddialog_p.h"
 
 DWIDGET_BEGIN_NAMESPACE
+
+class DRedPointLabel : public QLabel
+{
+public:
+    DRedPointLabel(QWidget *parent = nullptr);
+protected:
+    void paintEvent(QPaintEvent *e) override;
+};
 
 class DAboutDialogPrivate : public DDialogPrivate
 {
@@ -18,8 +28,10 @@ public:
     void init();
     void loadDistributionInfo();
     void updateWebsiteLabel();
-    void updateAcknowledgementLabel();
     void _q_onLinkActivated(const QString &link);
+    void _q_onFeatureActivated(const QString &link);
+    void _q_onLicenseActivated(const QString &link);
+
     QPixmap loadPixmap(const QString &file);
 
     static const QString websiteLinkTemplate;
@@ -32,13 +44,13 @@ public:
     QLabel *licenseLabel = nullptr;
     QLabel *companyLogoLabel = nullptr;
     QLabel *websiteLabel = nullptr;
+    QLabel *featureLabel = nullptr;
+    DRedPointLabel *redPointLabel = nullptr;
+    QLabel *acknowledgementTipLabel = nullptr;
     QLabel *acknowledgementLabel = nullptr;
-
     QString logoPath;
     QString websiteName;
     QString websiteLink;
-    QString acknowledgementLink;
-
     Q_DECLARE_PUBLIC(DAboutDialog)
 };
 

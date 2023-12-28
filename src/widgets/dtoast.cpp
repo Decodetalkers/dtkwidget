@@ -4,17 +4,18 @@
 
 #include "dtoast.h"
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
+
 #include <DObjectPrivate>
+#include <DIcon>
 
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QIcon>
 
 #include "dthememanager.h"
 #include "dgraphicsgloweffect.h"
-#include "dhidpihelper.h"
 
 DWIDGET_BEGIN_NAMESPACE
 
@@ -115,7 +116,7 @@ void DToast::setIcon(QString iconfile)
     D_D(DToast);
     d->icon = QIcon(iconfile);
     d->iconLabel->setVisible(true);
-    d->iconLabel->setPixmap(DHiDPIHelper::loadNxPixmap(iconfile));
+    d->iconLabel->setPixmap(DTK_GUI_NAMESPACE::DIcon::loadNxPixmap(iconfile));
 }
 
 /*!
@@ -243,3 +244,5 @@ void DToastPrivate::initUI()
 
 
 DWIDGET_END_NAMESPACE
+
+#endif

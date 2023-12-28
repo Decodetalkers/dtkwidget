@@ -23,11 +23,12 @@ protected:
     DAboutDialog *widget = nullptr;
 };
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0) // dtk 6.0 no longer support
 TEST_F(ut_DAboutDialog, setAcknowledgementLink)
 {
-    widget->setAcknowledgementLink("setAcknowledgementLink");
-    ASSERT_EQ(widget->acknowledgementLink(), "setAcknowledgementLink");
+    widget->setAcknowledgementLink(QString{"setAcknowledgementLink"});
 };
+#endif
 
 TEST_F(ut_DAboutDialog, setAcknowledgementVisible)
 {
@@ -37,7 +38,11 @@ TEST_F(ut_DAboutDialog, setAcknowledgementVisible)
 TEST_F(ut_DAboutDialog, setCompanyLogo)
 {
     widget->setCompanyLogo(QPixmap(50, 50));
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     ASSERT_EQ(widget->companyLogo()->size(), QSize(50, 50));
+#else
+    ASSERT_EQ(widget->companyLogo().size(), QSize(50, 50));
+#endif
 };
 
 TEST_F(ut_DAboutDialog, setDescription)
@@ -86,4 +91,3 @@ TEST_F(ut_DAboutDialog, setWindowTitle)
     widget->setWindowTitle("setWindowTitle");
     ASSERT_EQ(widget->windowTitle(), "setWindowTitle");
 };
-

@@ -1,6 +1,9 @@
-// SPDX-FileCopyrightText: 2015 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2015 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
+
+#include "dapplication.h"
+#include "private/dapplication_p.h"
 
 #include <QtGlobal>
 #ifdef Q_OS_LINUX
@@ -36,32 +39,35 @@
 #include <unistd.h>
 #endif
 
-#include "dapplication.h"
 #include "dthememanager.h"
-#include "private/dapplication_p.h"
 #include "daboutdialog.h"
+#include "dfeaturedisplaydialog.h"
 #include "dmainwindow.h"
+#include "dsizemode.h"
 
 #include <DPlatformHandle>
 #include <DGuiApplicationHelper>
 #include <DFontSizeManager>
 #include <DTitlebar>
+#include <DLicenseDialog>
 
 #ifdef Q_OS_LINUX
 #include "private/startupnotifications/startupnotificationmonitor.h"
 
 #include <DDBusSender>
-
+#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
 #include <QGSettings>
 #endif
+#endif
 
+
+
+DWIDGET_BEGIN_NAMESPACE
+
+DCORE_USE_NAMESPACE
 #define DXCB_PLUGIN_KEY "dxcb"
 #define DXCB_PLUGIN_SYMBOLIC_PROPERTY "_d_isDxcb"
 #define QT_THEME_CONFIG_PATH "D_QT_THEME_CONFIG_PATH"
-
-DCORE_USE_NAMESPACE
-
-DWIDGET_BEGIN_NAMESPACE
 
 DApplicationPrivate::DApplicationPrivate(DApplication *q) :
     DObjectPrivate(q)
@@ -113,6 +119,7 @@ DApplicationPrivate::~DApplicationPrivate()
 
 }
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 QString DApplicationPrivate::theme() const
 {
     return DThemeManager::instance()->theme();
@@ -123,6 +130,7 @@ void DApplicationPrivate::setTheme(const QString &theme)
     DThemeManager *themeManager = DThemeManager::instance();
     themeManager->setTheme(theme);
 }
+#endif
 
 static bool tryAcquireSystemSemaphore(QSystemSemaphore *ss, qint64 timeout = 10)
 {
@@ -135,8 +143,11 @@ static bool tryAcquireSystemSemaphore(QSystemSemaphore *ss, qint64 timeout = 10)
     _tmp_ss.acquire();
 
     QElapsedTimer t;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QFuture<bool> request = QtConcurrent::run(ss, &QSystemSemaphore::acquire);
-
+#else
+    QFuture<bool> request = QtConcurrent::run(&QSystemSemaphore::acquire,ss);
+#endif
     t.start();
 
     while (Q_LIKELY(t.elapsed() < timeout && !request.isFinished()));
@@ -224,17 +235,7 @@ bool DApplicationPrivate::setSingleInstanceByDbus(const QString &key)
 
 bool DApplicationPrivate::loadDtkTranslator(QList<QLocale> localeFallback)
 {
-    D_Q(DApplication);
-
-    auto qtTranslator = new QTranslator(q);
-    qtTranslator->load("qt_" + QLocale::system().name(), QLibraryInfo::location(QLibraryInfo::TranslationsPath));
-    q->installTranslator(qtTranslator);
-
-    auto qtbaseTranslator = new QTranslator(q);
-    qtTranslator->load("qtbase_" + QLocale::system().name(), QLibraryInfo::location(QLibraryInfo::TranslationsPath));
-    q->installTranslator(qtbaseTranslator);
-
-    QList<DPathBuf> translateDirs;
+    QList<QString> translateDirs;
     auto dtkwidgetDir = DWIDGET_TRANSLATIONS_DIR;
     auto dtkwidgetName = "dtkwidget";
 
@@ -242,73 +243,14 @@ bool DApplicationPrivate::loadDtkTranslator(QList<QLocale> localeFallback)
     auto dataDirs = DStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
     for (const auto &path : dataDirs) {
         DPathBuf DPathBuf(path);
-        translateDirs << DPathBuf / dtkwidgetDir;
+        translateDirs << (DPathBuf / dtkwidgetDir).toString();
     }
-
-    DPathBuf runDir(q->applicationDirPath());
-    translateDirs << runDir.join("translations");
-
-    DPathBuf currentDir(QDir::currentPath());
-    translateDirs << currentDir.join("translations");
 
 #ifdef DTK_STATIC_TRANSLATION
-    translateDirs << DPathBuf(":/dtk/translations");
+    translateDirs << QString(":/dtk/translations");
 #endif
 
-    return loadTranslator(translateDirs, dtkwidgetName, localeFallback);
-}
-
-bool DApplicationPrivate::loadTranslator(QList<DPathBuf> translateDirs, const QString &name, QList<QLocale> localeFallback)
-{
-    D_Q(DApplication);
-
-    QStringList missingQmfiles;
-    for (auto &locale : localeFallback) {
-        QString translateFilename = QString("%1_%2").arg(name).arg(locale.name());
-        for (auto &path : translateDirs) {
-            QString translatePath = (path / translateFilename).toString();
-            if (QFile::exists(translatePath + ".qm")) {
-                qDebug() << "load translate" << translatePath;
-                auto translator = new QTranslator(q);
-                translator->load(translatePath);
-                q->installTranslator(translator);
-                q->setProperty("dapp_locale", locale.name());
-                return true;
-            }
-        }
-
-        // fix english does not need to translation..
-        if (locale.language() != QLocale::English) {
-            missingQmfiles << translateFilename + ".qm";
-        }
-
-        QStringList parseLocalNameList = locale.name().split("_", QString::SkipEmptyParts);
-        if (parseLocalNameList.length() > 0) {
-            translateFilename = QString("%1_%2").arg(name)
-                                .arg(parseLocalNameList.at(0));
-            for (auto &path : translateDirs) {
-                QString translatePath = (path / translateFilename).toString();
-                if (QFile::exists(translatePath + ".qm")) {
-                    qDebug() << "translatePath after feedback:" << translatePath;
-                    auto translator = new QTranslator(q);
-                    translator->load(translatePath);
-                    q->installTranslator(translator);
-                    q->setProperty("dapp_locale", parseLocalNameList.at(0));
-                    return true;
-                }
-            }
-        }
-
-        // fix english does not need to translation..
-        if (locale.language() != QLocale::English) {
-            missingQmfiles << translateFilename + ".qm";
-        }
-    }
-
-    if (missingQmfiles.size() > 0) {
-        qWarning() << name << "can not find qm files" << missingQmfiles;
-    }
-    return false;
+    return DGuiApplicationHelper::loadTranslator(dtkwidgetName, translateDirs, localeFallback);
 }
 
 // 自动激活DMainWindow类型的窗口
@@ -444,6 +386,33 @@ void DApplicationPrivate::_q_resizeWindowContentsForVirtualKeyboard()
     // TODO(zccrs): 暂时不支持压缩窗口高度适应虚拟键盘的模式
     // 需要做到ScrollArea中的输入控件能在改变窗口高度之后还处于可见状态
     acclimatizeVirtualKeyboardForFocusWidget(false);
+}
+
+void DApplicationPrivate::_q_sizeModeChanged()
+{
+    QEvent ev(QEvent::StyleChange);
+    for (auto item : qApp->topLevelWidgets()) {
+        handleSizeModeChangeEvent(item, &ev);
+    }
+}
+
+void DApplicationPrivate::handleSizeModeChangeEvent(QWidget *widget, QEvent *event)
+{
+    // 深度优先遍历，事件接受顺序：子 -> 父， 若parentWidget先处理event，可能存在布局没更新问题
+    for (auto w : widget->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
+        handleSizeModeChangeEvent(w, event);
+    }
+    if (widget->isWindow()) {
+        // TODO 顶层窗口需要延迟，否则内部控件布局出现异常，例如DDialog, 若send事件，导致
+        // 从compact -> normal -> campact时，DDialog内部控件布局的两次campact大小不一致.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        qApp->postEvent(widget, event->clone());
+#else
+        qApp->postEvent(widget, new QEvent(*event));
+#endif
+    } else {
+        QCoreApplication::sendEvent(widget, event);
+    }
 }
 
 bool DApplicationPrivate::isUserManualExists()
@@ -607,6 +576,7 @@ DApplication::DApplication(int &argc, char **argv) :
     }
 
 #ifdef Q_OS_LINUX
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     // set qpixmap cache limit
     if (QGSettings::isSchemaInstalled("com.deepin.dde.dapplication"))
     {
@@ -635,6 +605,14 @@ DApplication::DApplication(int &argc, char **argv) :
             QTapAndHoldGesture::setTimeout(gsettings.get("longpress-duration").toInt() - 100);
     }
 #endif
+#endif
+
+    connect(DGuiApplicationHelper::instance(), SIGNAL(sizeModeChanged(DGuiApplicationHelper::SizeMode)),
+            this, SLOT(_q_sizeModeChanged()));
+}
+
+DApplication::~DApplication() {
+    
 }
 
 /*!
@@ -656,24 +634,28 @@ DApplication::DApplication(int &argc, char **argv) :
 
   \return the theme name.
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 QString DApplication::theme() const
 {
     D_DC(DApplication);
 
     return d->theme();
 }
+#endif
 
 /*!
   \brief set theme for the application to use the theme we provide.
 
   \a theme is the name of the theme we want to set.
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 void DApplication::setTheme(const QString &theme)
 {
     D_D(DApplication);
 
     d->setTheme(theme);
 }
+#endif
 
 #ifdef Q_OS_UNIX
 /*!
@@ -777,26 +759,11 @@ bool DApplication::loadTranslator(QList<QLocale> localeFallback)
 {
     D_D(DApplication);
 
-    d->loadDtkTranslator(localeFallback);
+    bool loadDtkTranslator =  d->loadDtkTranslator(localeFallback);
+    // qt && qtbase && appName
+    bool loadQtAppTranslator = DGuiApplicationHelper::loadTranslator(localeFallback);
 
-    QList<DPathBuf> translateDirs;
-    auto appName = applicationName();
-    //("/home/user/.local/share", "/usr/local/share", "/usr/share")
-    auto dataDirs = DStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
-    for (const auto &path : dataDirs) {
-        DPathBuf DPathBuf(path);
-        translateDirs << DPathBuf / appName / "translations";
-    }
-    DPathBuf runDir(this->applicationDirPath());
-    translateDirs << runDir.join("translations");
-    DPathBuf currentDir(QDir::currentPath());
-    translateDirs << currentDir.join("translations");
-
-#ifdef DTK_STATIC_TRANSLATION
-    translateDirs << DPathBuf(":/dtk/translations");
-#endif
-
-    return d->loadTranslator(translateDirs, appName, localeFallback);
+    return loadDtkTranslator && loadQtAppTranslator;
 }
 
 /*!
@@ -807,6 +774,7 @@ bool DApplication::loadTranslator(QList<QLocale> localeFallback)
 
   \return 设置成功返回 true，否则返回 false。
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 bool DApplication::loadDXcbPlugin()
 {
     Q_ASSERT_X(!qApp, "DApplication::loadDxcbPlugin", "Must call before QGuiApplication defined object");
@@ -820,6 +788,7 @@ bool DApplication::loadDXcbPlugin()
 
     return qputenv("QT_QPA_PLATFORM", DXCB_PLUGIN_KEY);
 }
+#endif
 
 /*!
   \brief 检查当前程序是否使用了dxcb平台插件.
@@ -1142,6 +1111,31 @@ void DApplication::setAboutDialog(DAboutDialog *aboutDialog)
     d->aboutDialog = aboutDialog;
 }
 
+DFeatureDisplayDialog *DApplication::featureDisplayDialog()
+{
+    D_D(DApplication);
+    if (d->featureDisplayDialog == nullptr) {
+        d->featureDisplayDialog = new DFeatureDisplayDialog();
+        connect(this, &DApplication::aboutToQuit, this, [this]{
+            D_D(DApplication);
+            d->featureDisplayDialog->deleteLater();
+            d->featureDisplayDialog = nullptr;
+        });
+    }
+    return d->featureDisplayDialog;
+}
+
+void DApplication::setFeatureDisplayDialog(DFeatureDisplayDialog *featureDisplayDialog)
+{
+    D_D(DApplication);
+
+    if (d->featureDisplayDialog && d->featureDisplayDialog != featureDisplayDialog) {
+        d->featureDisplayDialog->deleteLater();
+    }
+
+    d->featureDisplayDialog = featureDisplayDialog;
+}
+
 /*!
   \property DApplication::visibleMenuShortcutText
 
@@ -1253,7 +1247,7 @@ void DApplication::setAutoActivateWindows(bool autoActivateWindows)
  */
 void DApplication::acclimatizeVirtualKeyboard(QWidget *window)
 {
-    Q_ASSERT(!window->property("_dtk_NoTopLevelEnabled").toBool() ? window->isTopLevel() : true
+    Q_ASSERT(!window->property("_dtk_NoTopLevelEnabled").toBool() ? window->isWindow() : true
              && !window->testAttribute(Qt::WA_LayoutOnEntireRect)
              && !window->testAttribute(Qt::WA_ContentsMarginsRespectsSafeArea));
 
@@ -1331,6 +1325,42 @@ bool DApplication::isAcclimatizedVirtualKeyboard(QWidget *window) const
     return d->acclimatizeVirtualKeyboardWindows.contains(window);
 }
 
+QString DApplication::applicationCreditsFile() const
+{
+    D_DC(DApplication);
+    return d->applicationCreditsFile;
+}
+
+void DApplication::setApplicationCreditsFile(const QString &file)
+{
+    D_D(DApplication);
+    d->applicationCreditsFile = file;
+}
+
+QByteArray DApplication::applicationCreditsContent() const
+{
+    D_DC(DApplication);
+    return d->applicationCreditsContent;
+}
+
+void DApplication::setApplicationCreditsContent(const QByteArray &content)
+{
+    D_D(DApplication);
+    d->applicationCreditsContent = content;
+}
+
+QString DApplication::licensePath() const
+{
+    D_DC(DApplication);
+    return d->licensePath;
+}
+
+void DApplication::setLicensePath(const QString &path)
+{
+    D_D(DApplication);
+    d->licensePath = path;
+}
+
 /*!
    \brief 设置 app 的处理程序.
 
@@ -1393,10 +1423,22 @@ void DApplication::handleAboutAction()
         d->appHandler->handleAboutAction();
         return;
     }
-
+    if (d->licenseDialog == nullptr) {
+        d->licenseDialog = new DLicenseDialog();
+        d->licenseDialog->setFile(d->applicationCreditsFile);
+        d->licenseDialog->setContent(d->applicationCreditsContent);
+        d->licenseDialog->setLicenseSearchPath(d->licensePath);
+        d->licenseDialog->load();
+        connect(this, &DApplication::aboutToQuit, this, [this]{
+            D_D(DApplication);
+            d->licenseDialog->deleteLater();
+            d->licenseDialog = nullptr;
+        });
+    }
     if (d->aboutDialog) {
         d->aboutDialog->activateWindow();
         d->aboutDialog->raise();
+        d->aboutDialog->setLicenseEnabled(d->licenseDialog->isValid());
         if (DGuiApplicationHelper::isTabletEnvironment()) {
             d->aboutDialog->exec();
         } else {
@@ -1408,15 +1450,17 @@ void DApplication::handleAboutAction()
     DAboutDialog *aboutDialog = new DAboutDialog(activeWindow());
     aboutDialog->setProductName(productName());
     aboutDialog->setProductIcon(productIcon());
-    aboutDialog->setVersion(translate("DAboutDialog", "Version: %1").arg(applicationVersion()));
+    aboutDialog->setVersion(applicationVersion());
     aboutDialog->setDescription(applicationDescription());
 
     if (!applicationLicense().isEmpty()) {
         aboutDialog->setLicense(translate("DAboutDialog", "%1 is released under %2").arg(productName()).arg(applicationLicense()));
     }
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
     if (!applicationAcknowledgementPage().isEmpty()) {
         aboutDialog->setAcknowledgementLink(applicationAcknowledgementPage());
     }
+#endif
     aboutDialog->setAcknowledgementVisible(d->acknowledgementPageVisible);
     aboutDialog->setAttribute(Qt::WA_DeleteOnClose);
 
@@ -1424,10 +1468,17 @@ void DApplication::handleAboutAction()
     // 不能使用aboutToClose信号 应用能够打开多个的情况下 打开关于后直接关闭程序
     // 此时aboutToColose信号不会触发 再次打开程序并打开关于会出现访问野指针 程序崩溃的情况
     d->aboutDialog = aboutDialog;
+    d->aboutDialog->setLicenseEnabled(d->licenseDialog->isValid());
     connect(d->aboutDialog, &DAboutDialog::destroyed, this, [=] {
         d->aboutDialog = nullptr;
     });
-
+    connect(d->aboutDialog, &DAboutDialog::featureActivated, this, [this] {
+        featureDisplayDialog()->show();
+    });
+    connect(d->aboutDialog, &DAboutDialog::licenseActivated, this, [d] {
+        d->licenseDialog->activateWindow();
+        d->licenseDialog->show();
+    });
     if (DGuiApplicationHelper::isTabletEnvironment()) {
         aboutDialog->exec();
     } else {
@@ -1476,7 +1527,7 @@ bool DApplication::notify(QObject *obj, QEvent *event)
     if (event->type() == QEvent::FocusIn) {
         QFocusEvent *fe = static_cast<QFocusEvent*>(event);
         QWidget *widget = qobject_cast<QWidget*>(obj);
-        if (widget && fe->reason() == Qt::ActiveWindowFocusReason && !widget->isTopLevel()
+        if (widget && fe->reason() == Qt::ActiveWindowFocusReason && !widget->isWindow()
                 && ((widget->focusPolicy() & Qt::StrongFocus) != Qt::StrongFocus || qobject_cast<DTitlebar *>(widget)))  {
             // 针对激活窗口所获得的焦点，为了避免被默认给到窗口内部的控件上，此处将焦点还给主窗口并且只设置一次
 #define NON_FIRST_ACTIVE "_d_dtk_non_first_active_focus"

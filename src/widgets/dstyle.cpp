@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2019 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2019 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
@@ -7,8 +7,12 @@
 #include "ddciiconpalette.h"
 #include "dguiapplicationhelper.h"
 #include "dstyleoption.h"
+#include "dtooltip.h"
+#include "dsizemode.h"
 
 #include <DGuiApplicationHelper>
+#include <DIconTheme>
+#include <DConfig>
 
 #include <QStyleOption>
 #include <QTextLayout>
@@ -30,10 +34,10 @@ QT_BEGIN_NAMESPACE
 extern Q_WIDGETS_EXPORT void qt_blurImage(QPainter *p, QImage &blurImage, qreal radius, bool quality, bool alphaOnly, int transposed = 0);
 QT_END_NAMESPACE
 
+DCORE_USE_NAMESPACE
 DGUI_USE_NAMESPACE
 DWIDGET_BEGIN_NAMESPACE
 
-static Qt::TextFormat textFormat = Qt::TextFormat::AutoText;
 
 /*!
   \brief 该函数用于调整给定颜色.
@@ -126,10 +130,13 @@ static DDciIconPalette makeIconPalette(const QPalette &pal)
 
   \sa Qt::TextFormat
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 void DStyle::setTooltipTextFormat(Qt::TextFormat format)
 {
-    textFormat = format;
+    DToolTip::setToolTipTextFormat(format);
 }
+#endif
+
 /*!
   \brief 获取 tooltip 文本格式.
 
@@ -137,10 +144,12 @@ void DStyle::setTooltipTextFormat(Qt::TextFormat format)
 
   \sa Qt::TextFormat
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 Qt::TextFormat DStyle::tooltipTextFormat()
 {
-    return textFormat;
+    return DToolTip::toolTipTextFormat();
 }
+#endif
 
 void DStyle::setFocusRectVisible(QWidget *widget, bool visible)
 {
@@ -157,6 +166,62 @@ void DStyle::setUncheckedItemIndicatorVisible(QWidget *widget, bool visible)
     widget->setProperty("_d_dtk_UncheckedItemIndicator", visible);
 }
 
+void DStyle::setRedPointVisible(QObject *object, bool visible)
+{
+    object->setProperty("_d_menu_item_redpoint", visible);
+}
+
+void DStyle::setShortcutUnderlineVisible(bool visible)
+{
+    qApp->setProperty("_d_menu_underlineshortcut", visible);
+}
+
+static inline bool hasConfig(const QString &key, bool fallback = false)
+{
+    DConfig config("org.deepin.dtk.preference");
+    return config.value(key, fallback).toBool();
+}
+
+static inline bool hasProperty(const char *key, std::function<bool()> fallback)
+{
+    const QVariant &prop = qApp->property(key);
+    if (prop.isValid())
+        return prop.toBool();
+
+    return fallback();
+}
+
+static inline bool hasEnv(const char *key, std::function<bool()> fallback)
+{
+    if (qEnvironmentVariableIsSet(key))
+        return true;
+
+    return fallback();
+}
+
+bool DStyle::shortcutUnderlineVisible()
+{
+    return hasEnv("D_MENU_UNDERLINESHORTCUT", []()->bool {
+        return hasProperty("_d_menu_underlineshortcut", []()->bool {
+            return hasConfig("underlineShortcut");
+        });
+    });
+}
+
+void DStyle::setMenuKeyboardSearchDisabled(bool disabled)
+{
+    qApp->setProperty("_d_menu_keyboardsearch_disabled", disabled);
+}
+
+bool DStyle::isMenuKeyboardSearchDisabled()
+{
+    return hasEnv("D_MENU_DISABLE_KEYBOARDSEARCH", []()->bool {
+        return hasProperty("_d_menu_keyboardsearch_disabled", []()->bool {
+            return hasConfig("keyboardsearchDisabled");
+        });
+    });
+}
+
 namespace DDrawUtils {
 static QImage dropShadow(const QPixmap &px, qreal radius, const QColor &color)
 {
@@ -166,6 +231,8 @@ static QImage dropShadow(const QPixmap &px, qreal radius, const QColor &color)
     QImage tmp(px.size() + QSize(radius * 2, radius * 2), QImage::Format_ARGB32_Premultiplied);
     tmp.fill(0);
     QPainter tmpPainter(&tmp);
+    tmpPainter.setOpacity(0.3); // design requirement
+    tmpPainter.setRenderHint(QPainter::Antialiasing);
     tmpPainter.setCompositionMode(QPainter::CompositionMode_Source);
     tmpPainter.drawPixmap(QPoint(radius, radius), px);
     tmpPainter.end();
@@ -257,13 +324,14 @@ void drawShadow(QPainter *pa, const QRect &rect, qreal xRadius, qreal yRadius, c
 
     const QString &key = QString("dtk-shadow-%1x%2-%3-%4").arg(xRadius).arg(yRadius).arg(sc.name()).arg(radius);
 
-    if (!QPixmapCache::find(key, shadow)) {
+    if (!QPixmapCache::find(key, &shadow)) {
         QImage shadow_base(QSize(xRadius * 3, yRadius * 3), QImage::Format_ARGB32_Premultiplied);
         shadow_base.fill(0);
         QPainter pa(&shadow_base);
 
         pa.setBrush(sc);
         pa.setPen(Qt::NoPen);
+        pa.setRenderHint(QPainter::Antialiasing);
         pa.drawRoundedRect(shadow_base.rect(), xRadius, yRadius);
         pa.end();
 
@@ -299,6 +367,7 @@ void drawShadow(QPainter *pa, const QRect &rect, const QPainterPath &path, const
     shadow_base.setDevicePixelRatio(scale);
 
     QPainter paTmp(&shadow_base);
+    paTmp.setRenderHint(QPainter::Antialiasing, true);
     paTmp.setBrush(sc);
     paTmp.setPen(Qt::NoPen);
     paTmp.drawPath(path);
@@ -1115,7 +1184,7 @@ void DStyle::drawPrimitive(const QStyle *style, DStyle::PrimitiveElement pe, con
             DStyleHelper dstyle(style);
 
             if (btn->features & DStyleOptionButton::FloatingButton) {
-                int frame_margins = 3;
+                int frame_margins = dstyle.pixelMetric(DStyle::PM_FloatingButtonFrameMargin, opt, w);
                 const QMargins margins(frame_margins, frame_margins, frame_margins, frame_margins);
                 QRect shadow_rect = opt->rect + margins;
                 const QRect content_rect = opt->rect - margins;
@@ -1131,12 +1200,12 @@ void DStyle::drawPrimitive(const QStyle *style, DStyle::PrimitiveElement pe, con
                 shadow_rect.setHeight(qMin(shadow_rect.width(), shadow_rect.height()));
                 shadow_rect.moveCenter(opt->rect.center() + QPoint(shadow_xoffset / 2.0, shadow_yoffset / 2.0));
 
+                p->setRenderHint(QPainter::Antialiasing);
                 DDrawUtils::drawShadow(p, shadow_rect, frame_radius, frame_radius,
                                        DStyle::adjustColor(color, 0, 0, +30), shadow_radius, QPoint(0, 0));
 
                 p->setPen(Qt::NoPen);
                 p->setBrush(color);
-                p->setRenderHint(QPainter::Antialiasing);
                 p->drawEllipse(content_rect);
             } else if (btn->features & DStyleOptionButton::CircleButton) {
                 QRect content_rect = opt->rect;
@@ -1178,7 +1247,7 @@ void DStyle::drawPrimitive(const QStyle *style, DStyle::PrimitiveElement pe, con
 
             if (btn->features & DStyleOptionButton::TitleBarButton) {
                 if (!(opt->state & (State_MouseOver | State_Sunken)) || !(opt->state & State_Enabled)) {
-                    pa.setBrush(QPalette::Background, Qt::transparent);
+                    pa.setBrush(QPalette::Window, Qt::transparent);
                 } else {
                     QColor color;
                     DGuiApplicationHelper *guiAppHelp = DGuiApplicationHelper::instance();
@@ -1186,21 +1255,21 @@ void DStyle::drawPrimitive(const QStyle *style, DStyle::PrimitiveElement pe, con
                         color = QColor(255, 255, 255, 255 * 0.05);
                     else
                         color = QColor(0, 0, 0, 255 * 0.05);
-                    pa.setBrush(QPalette::Background, color);
+                    pa.setBrush(QPalette::Window, color);
                 }
 
                 if (opt->state & State_Sunken) {
-                    pa.setBrush(QPalette::Foreground, opt->palette.highlight());
+                    pa.setBrush(QPalette::WindowText, opt->palette.highlight());
                 } else {
-                    pa.setBrush(QPalette::Foreground, opt->palette.buttonText());
+                    pa.setBrush(QPalette::WindowText, opt->palette.buttonText());
                 }
             } else {
-                pa.setBrush(QPalette::Background, dstyle.generatedBrush(opt, pa.button(), pa.currentColorGroup(), QPalette::Button));
+                pa.setBrush(QPalette::Window, dstyle.generatedBrush(opt, pa.button(), pa.currentColorGroup(), QPalette::Button));
 
                 if (opt->state & QStyle::State_On) {
-                    pa.setBrush(QPalette::Foreground, dstyle.generatedBrush(opt, pa.highlightedText(), pa.currentColorGroup(), QPalette::HighlightedText));
+                    pa.setBrush(QPalette::WindowText, dstyle.generatedBrush(opt, pa.highlightedText(), pa.currentColorGroup(), QPalette::HighlightedText));
                 } else {
-                    pa.setBrush(QPalette::Foreground, dstyle.generatedBrush(opt, pa.buttonText(), pa.currentColorGroup(), QPalette::ButtonText));
+                    pa.setBrush(QPalette::WindowText, dstyle.generatedBrush(opt, pa.buttonText(), pa.currentColorGroup(), QPalette::ButtonText));
                 }
             }
 
@@ -1224,8 +1293,8 @@ void DStyle::drawPrimitive(const QStyle *style, DStyle::PrimitiveElement pe, con
                     engine->paint(p, opt->palette, opt->rect);
                 } else {
                     auto icon_mode_state = toIconModeState(opt);
-                    p->setBrush(opt->palette.background());
-                    p->setPen(QPen(opt->palette.foreground(), 1));
+                    p->setBrush(opt->palette.window());
+                    p->setPen(QPen(opt->palette.windowText(), 1));
                     icon_opt->icon.paint(p, opt->rect, icon_opt->iconAlignment, icon_mode_state.first, icon_mode_state.second);
                 }
             }
@@ -1343,7 +1412,7 @@ void DStyle::drawControl(const QStyle *style, DStyle::ControlElement ce, const Q
             }
 
             // 有新信息时添加小红点
-            if (w && w->property("_d_dtk_newNotification").toBool()){
+            if (w && w->property("_d_menu_item_redpoint").toBool()){
                 DPalette pa = DGuiApplicationHelper::instance()->standardPalette(DGuiApplicationHelper::LightType);
                 // 按图标大小50x50时，小红点大小6x6，距离右边和上面8个像素的比例绘制
                 const int redPointRadius = 3;
@@ -1446,7 +1515,8 @@ void DStyle::drawControl(const QStyle *style, DStyle::ControlElement ce, const Q
             DStyleHelper dstyle(style);
             dstyle.drawControl(CE_ButtonBoxButtonBevel, btn, p, w);
             DStyleOptionButton subopt = *btn;
-            subopt.dciIcon = btn->dciIcon;
+            if (btn->features & DStyleOptionButton::HasDciIcon)
+                subopt.dciIcon = btn->dciIcon;
             subopt.rect = dstyle.subElementRect(SE_ButtonBoxButtonContents, btn, w);
             dstyle.drawControl(CE_ButtonBoxButtonLabel, &subopt, p, w);
             if ((btn->state & State_HasFocus)) {
@@ -1575,7 +1645,7 @@ int DStyle::pixelMetric(const QStyle *style, DStyle::PixelMetric m, const QStyle
                 return radius;
             }
         }
-        return 8;
+        return DSizeModeHelper::element(6, 8);
     case PM_TopLevelWindowRadius:
         return 18;
     case PM_ShadowRadius:
@@ -1601,9 +1671,9 @@ int DStyle::pixelMetric(const QStyle *style, DStyle::PixelMetric m, const QStyle
         return 12;
     }
     case PM_SwitchButtonHandleWidth:
-        return 30;
+        return DSizeModeHelper::element(24, 30);
     case PM_SwithcButtonHandleHeight:
-        return 24;
+        return DSizeModeHelper::element(20, 24);
     case PM_FloatingWidgetRadius: {
         if (const DStyleOptionFloatingWidget *wid = qstyleoption_cast<const DStyleOptionFloatingWidget *>(opt)) {
             if (wid->frameRadius != -1)
@@ -1612,11 +1682,11 @@ int DStyle::pixelMetric(const QStyle *style, DStyle::PixelMetric m, const QStyle
         return dstyle.pixelMetric(PM_TopLevelWindowRadius, opt, widget);
     }
     case PM_FloatingWidgetShadowRadius:
-        return 8;
+        return DSizeModeHelper::element(4, 8);
     case PM_FloatingWidgetShadowHOffset:
         return 0;
     case PM_FloatingWidgetShadowVOffset:
-        return 4;
+        return DSizeModeHelper::element(2, 4);
     case PM_FloatingWidgetShadowMargins: {
         int shadow_radius = dstyle.pixelMetric(PM_FloatingWidgetShadowRadius, opt, widget);
         int shadow_hoffset = dstyle.pixelMetric(PM_FloatingWidgetShadowHOffset, opt, widget);
@@ -1628,7 +1698,9 @@ int DStyle::pixelMetric(const QStyle *style, DStyle::PixelMetric m, const QStyle
     case PM_ContentsSpacing:
         return 10;
     case PM_ButtonMinimizedSize:
-        return 36;
+        return DSizeModeHelper::element(24, 36);
+    case PM_ToolTipLabelWidth:
+        return 300;
     default:
         break;
     }
@@ -1670,9 +1742,8 @@ QRect DStyle::subElementRect(const QStyle *style, DStyle::SubElement r, const QS
     }
     case SE_SwitchButtonHandle: {
         if (const DStyleOptionButton *btn = qstyleoption_cast<const DStyleOptionButton *>(opt)) {
-            DStyleHelper dstyle(style);
-            int handleWidth = dstyle.pixelMetric(PM_SwitchButtonHandleWidth, opt, widget);
-            int handleHeight = dstyle.pixelMetric(PM_SwithcButtonHandleHeight, opt, widget);
+            int handleWidth = btn->rect.width() / 2.0;
+            int handleHeight = btn->rect.height();
             //这里的borderWidth为2,间隙宽度为2, 所以为4
             QRect rectHandle(4, 4, handleWidth, handleHeight);
 
@@ -1725,7 +1796,10 @@ QSize DStyle::sizeFromContents(const QStyle *style, DStyle::ContentsType ct, con
     case CT_IconButton:
         if (const DStyleOptionButton *btn = qstyleoption_cast<const DStyleOptionButton *>(opt)) {
             if (btn->features & DStyleOptionButton::FloatingButton) {
-                return btn->iconSize * 2.5;
+                DStyleHelper dstyle(style);
+                int frame_margin = dstyle.pixelMetric(DStyle::PM_FloatingButtonFrameMargin, opt, widget);
+                QSize marginSize(2 * frame_margin, 2 * frame_margin);
+                return DSizeModeHelper::element(QSize(36, 36) + marginSize, QSize(48, 48) + marginSize);
             }
 
             if (btn->features & DStyleOptionButton::Flat) {
@@ -1814,76 +1888,76 @@ case static_cast<uint32_t>(SP_##Value): { \
         CASE_ICON(SelectElement)
 
     case SP_IndicatorUnchecked:
-        return QIcon::fromTheme("unselected_indicator");
+        return DIconTheme::findQIcon("unselected_indicator");
     case SP_IndicatorChecked: {
         bool checked = opt && (opt->state & QStyle::State_Selected);
-        const QIcon &sci = QIcon::fromTheme("selected_checked_indicator");
+        const QIcon &sci = DIconTheme::findQIcon("selected_checked_indicator");
         bool useNewIcon = checked && !sci.isNull();
-        const QIcon &icon = useNewIcon ? sci : QIcon::fromTheme("selected_indicator");
+        const QIcon &icon = useNewIcon ? sci : DIconTheme::findQIcon("selected_indicator");
         DStyledIconEngine *icon_engine = new DStyledIconEngine(std::bind(DStyledIconEngine::drawIcon, icon, std::placeholders::_1, std::placeholders::_2), QStringLiteral("IndicatorChecked"));
         icon_engine->setFrontRole(widget, useNewIcon ? DPalette::HighlightedText : DPalette::Highlight );
         return QIcon(icon_engine);
     }
     case SP_DeleteButton:
-        return QIcon::fromTheme("list_delete");
+        return DIconTheme::findQIcon("list_delete");
     case SP_AddButton:
-        return QIcon::fromTheme("list_add");
+        return DIconTheme::findQIcon("list_add");
     case SP_ForkElement:
-        return QIcon::fromTheme("fork_indicator");
+        return DIconTheme::findQIcon("fork_indicator");
     case SP_CloseButton:
-        return QIcon::fromTheme("window-close_round");
+        return DIconTheme::findQIcon("window-close_round");
     case SP_DecreaseElement:
-        return QIcon::fromTheme("button_reduce");
+        return DIconTheme::findQIcon("button_reduce");
     case SP_IncreaseElement:
-        return QIcon::fromTheme("button_add");
+        return DIconTheme::findQIcon("button_add");
     case SP_MarkElement:
-        return QIcon::fromTheme("mark_indicator");
+        return DIconTheme::findQIcon("mark_indicator");
     case SP_UnlockElement:
-        return QIcon::fromTheme("unlock_indicator");
+        return DIconTheme::findQIcon("unlock_indicator");
     case SP_LockElement:
-        return QIcon::fromTheme("lock_indicator");
+        return DIconTheme::findQIcon("lock_indicator");
     case SP_ExpandElement:
-        return QIcon::fromTheme("go-up");
+        return DIconTheme::findQIcon("go-up");
     case SP_ReduceElement:
-        return QIcon::fromTheme("go-down");
+        return DIconTheme::findQIcon("go-down");
     case SP_ArrowEnter:
         return style->standardIcon(SP_ArrowForward);
     case SP_ArrowNext:
-        return QIcon::fromTheme("next_indicator");
+        return DIconTheme::findQIcon("next_indicator");
     case SP_ArrowLeave:
         return style->standardIcon(SP_ArrowBack);
     case SP_ArrowPrev:
-        return QIcon::fromTheme("prev_indicator");
+        return DIconTheme::findQIcon("prev_indicator");
     case SP_EditElement:
-        return QIcon::fromTheme("edit");
+        return DIconTheme::findQIcon("edit");
     case SP_MediaVolumeLowElement:
-        return QIcon::fromTheme("audio-volume-low");
+        return DIconTheme::findQIcon("audio-volume-low");
     case SP_MediaVolumeHighElement:
-        return QIcon::fromTheme("audio-volume-medium");
+        return DIconTheme::findQIcon("audio-volume-medium");
     case SP_MediaVolumeMutedElement:
-        return QIcon::fromTheme("audio-volume-muted");
+        return DIconTheme::findQIcon("audio-volume-muted");
     case SP_MediaVolumeLeftElement:
-        return QIcon::fromTheme("audio-volume-left");
+        return DIconTheme::findQIcon("audio-volume-left");
     case SP_MediaVolumeRightElement:
-        return QIcon::fromTheme("audio-volume-right");
+        return DIconTheme::findQIcon("audio-volume-right");
     case SP_IndicatorMajuscule:
-        return QIcon::fromTheme("caps_lock");
+        return DIconTheme::findQIcon("caps_lock");
     case SP_ShowPassword:
-        return QIcon::fromTheme("password_show");
+        return DIconTheme::findQIcon("password_show");
     case SP_HidePassword:
-        return QIcon::fromTheme("password_hide");
+        return DIconTheme::findQIcon("password_hide");
     case SP_IndicatorSearch:
-        return QIcon::fromTheme("search_indicator");
+        return DIconTheme::findQIcon("search_indicator");
     case SP_TitleMoreButton:
-        return QIcon::fromTheme("titlebar_more");
+        return DIconTheme::findQIcon("titlebar_more");
     case SP_Title_SS_LeftButton:
-        return QIcon::fromTheme("splitscreen_left");
+        return DIconTheme::findQIcon("splitscreen_left");
     case SP_Title_SS_RightButton:
-        return QIcon::fromTheme("splitscreen_right");
+        return DIconTheme::findQIcon("splitscreen_right");
     case SP_Title_SS_ShowNormalButton:
-        return QIcon::fromTheme("splitscreen_shownormal");
+        return DIconTheme::findQIcon("splitscreen_shownormal");
     case SP_Title_SS_ShowMaximizeButton:
-        return QIcon::fromTheme("splitscreen_showmaximize");
+        return DIconTheme::findQIcon("splitscreen_showmaximize");
     default:
         break;
     }
@@ -1901,9 +1975,14 @@ case static_cast<uint32_t>(SP_##Value): { \
 int DStyle::styleHint(QStyle::StyleHint sh, const QStyleOption *opt, const QWidget *w, QStyleHintReturn *shret) const
 {
     switch (sh) {
+    case SH_UnderlineShortcut: {
+        return shortcutUnderlineVisible();
+    }
+    case SH_Menu_KeyboardSearch: {
+        return !isMenuKeyboardSearchDisabled();
+    }
     case SH_ScrollBar_MiddleClickAbsolutePosition:
     case SH_FontDialog_SelectAssociatedText:
-    case SH_Menu_KeyboardSearch:
     case SH_Menu_Scrollable:
     case SH_Menu_SloppySubMenus:
     case SH_ComboBox_ListMouseTracking:
@@ -1926,7 +2005,6 @@ int DStyle::styleHint(QStyle::StyleHint sh, const QStyleOption *opt, const QWidg
     case SH_Slider_SnapToValue:
     case SH_Menu_AllowActiveAndDisabled:
     case SH_BlinkCursorWhenTextSelected:
-    case SH_UnderlineShortcut:
     case SH_ItemView_PaintAlternatingRowColorsForEmptyArea:
     case SH_ComboBox_AllowWheelScrolling:
         return false;
@@ -2042,7 +2120,7 @@ DStyle::StyleState DStyle::getState(const QStyleOption *option)
 
 static DStyle::StateFlags getFlags(const QStyleOption *option)
 {
-    DStyle::StateFlags flags = 0;
+    DStyle::StateFlags flags{0};
 
     if (option->state.testFlag(DStyle::State_On)) {
         flags |= DStyle::SS_CheckedFlag;
@@ -2067,20 +2145,20 @@ void DStyle::drawPrimitive(QStyle::PrimitiveElement pe, const QStyleOption *opt,
 {
     switch (pe) {
     case PE_IndicatorArrowUp:
-        p->setPen(QPen(opt->palette.foreground(), 1));
+        p->setPen(QPen(opt->palette.windowText(), 1));
         return DDrawUtils::drawArrowUp(p, opt->rect);
     case PE_IndicatorArrowDown:
-        p->setPen(QPen(opt->palette.foreground(), 1));
+        p->setPen(QPen(opt->palette.windowText(), 1));
         return DDrawUtils::drawArrowDown(p, opt->rect);
     case PE_IndicatorArrowRight:
-        p->setPen(QPen(opt->palette.foreground(), 1));
+        p->setPen(QPen(opt->palette.windowText(), 1));
         return DDrawUtils::drawArrowRight(p, opt->rect);
     case PE_IndicatorArrowLeft:
-        p->setPen(QPen(opt->palette.foreground(), 1));
+        p->setPen(QPen(opt->palette.windowText(), 1));
         return DDrawUtils::drawArrowLeft(p, opt->rect);
     case PE_IndicatorHeaderArrow:
         if (const QStyleOptionHeader *header = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
-            p->setPen(QPen(opt->palette.foreground(), 1));
+            p->setPen(QPen(opt->palette.windowText(), 1));
             // sort up draw down icon, since both windows, mac and even wikipedia did this...
             if (header->sortIndicator & QStyleOptionHeader::SortUp) {
                 return proxy()->drawPrimitive(PE_IndicatorArrowDown, opt, p, w);
@@ -2129,14 +2207,17 @@ int DStyle::pixelMetric(QStyle::PixelMetric m, const QStyleOption *opt, const QW
     case PM_MenuDesktopFrameWidth:
         return 0;
     case PM_ButtonMargin:
-    case PM_DefaultChildMargin:
-        return pixelMetric(PM_FrameRadius, opt, widget);
+        return 8;
+    case PM_LayoutLeftMargin:
+    case PM_LayoutRightMargin:
+    case PM_LayoutTopMargin:
+    case PM_LayoutBottomMargin:
+        return DSizeModeHelper::element(pixelMetric(PM_FrameRadius, opt, widget), pixelMetric(PM_FrameRadius, opt, widget));
     case PM_DefaultFrameWidth:
         return 1;
-    case PM_DefaultLayoutSpacing:
-        return 5;
-    case PM_DefaultTopLevelMargin:
-        return pixelMetric(PM_TopLevelWindowRadius, opt, widget) / 2;
+    case PM_LayoutHorizontalSpacing:
+    case PM_LayoutVerticalSpacing:
+        return DSizeModeHelper::element(2, 5);
     case PM_MenuBarItemSpacing:
         return 6;
     case PM_IndicatorWidth:
@@ -2149,9 +2230,9 @@ int DStyle::pixelMetric(QStyle::PixelMetric m, const QStyleOption *opt, const QW
         return 36;
     case PM_SliderLength:
     case PM_ScrollBarExtent:
-        return 20;
+        return DSizeModeHelper::element(16, 20);
     case PM_SliderControlThickness:
-        return 24;
+        return DSizeModeHelper::element(20, 24);
     case PM_MenuBarHMargin:
         return 10;
     case PM_MenuBarVMargin:
@@ -2173,6 +2254,12 @@ int DStyle::pixelMetric(QStyle::PixelMetric m, const QStyleOption *opt, const QW
         return 32;
     case PM_ScrollView_ScrollBarOverlap:
         return true;
+    case PM_ToolBarIconSize:
+        return 16;
+    case PM_MenuButtonIndicator:
+        return DSizeModeHelper::element(8, QCommonStyle::pixelMetric(m, opt, widget));
+    case PM_FloatingButtonFrameMargin:
+        return 3;
     default:
         break;
     }
@@ -2184,7 +2271,7 @@ int DStyle::pixelMetric(QStyle::PixelMetric m, const QStyleOption *opt, const QW
 #endif
 
     if (Q_UNLIKELY(LineEditIconSize == m)) {
-        return widget ? (widget->height() < 34 ? 16 : 32) : 24;
+        return DSizeModeHelper::element(20, 20);
     }
 
     if (Q_UNLIKELY(m < QStyle::PM_CustomBase)) {
@@ -2234,7 +2321,10 @@ QIcon DStyle::standardIcon(QStyle::StandardPixmap st, const QStyleOption *opt, c
         CASE_ICON(TitleBarNormalButton)
         CASE_ICON(TitleQuitFullButton)
     case SP_LineEditClearButton:
-        return QIcon::fromTheme("button_edit-clear");
+        return DIconTheme::findQIcon("button_edit-clear");
+    case SP_CommandLink:
+            return DIconTheme::findQIcon(QLatin1String("go-next"),
+                                    DIconTheme::findQIcon(QLatin1String("forward")));
     default:
         break;
     }
@@ -2307,9 +2397,11 @@ QBrush DStyle::generatedBrush(StateFlags flags, const QBrush &base, QPalette::Co
         switch (role) {
         case QPalette::Button:
         case QPalette::Light:
-        case QPalette::Dark:
-            colorNew = adjustColor(colorNew, 0, 0, -10, 0, 0, 0, 0);
+        case QPalette::Dark: {
+            DGuiApplicationHelper::ColorType type = DGuiApplicationHelper::toColorType(option->palette);
+            colorNew = adjustColor(colorNew, 0, 0, type == DGuiApplicationHelper::DarkType ? 10 : -10, 0, 0, 0, 0);
             break;
+        }
         case QPalette::Highlight:
             colorNew = adjustColor(colorNew, 0, 0, +20);
             break;
@@ -2795,6 +2887,8 @@ void DStyle::viewItemLayout(const QStyleOptionViewItem *opt, QRect *pixmapRect, 
 QRect DStyle::viewItemDrawText(const QStyle *style, QPainter *p, const QStyleOptionViewItem *option, const QRect &rect)
 {
     Q_UNUSED(style)
+    QModelIndex index = option->index;
+    const QWidget *view = option->widget;
     QRect textRect = rect;
     const bool wrapText = option->features & QStyleOptionViewItem::WrapText;
     QTextOption textOption;
@@ -2857,6 +2951,36 @@ QRect DStyle::viewItemDrawText(const QStyle *style, QPainter *p, const QStyleOpt
         line.draw(p, position);
     }
 
+    // Update ToolTip
+    const DToolTip::ToolTipShowMode &showMode = DToolTip::toolTipShowMode(view);
+    if (showMode != DToolTip::Default) {
+        const bool showToolTip = (showMode == DToolTip::AlwaysShow) ||
+                ((showMode == DToolTip::ShowWhenElided) && (elidedIndex != -1));
+        QVariant vShowToolTip = index.data(ItemDataRole::ViewItemShowToolTipRole);
+        bool needUpdate = false;
+        if (vShowToolTip.isValid()) {
+            bool oldShowStatus = vShowToolTip.toBool();
+            if (showToolTip != oldShowStatus) {
+                needUpdate = true;
+            }
+        } else {
+            needUpdate = true;
+        }
+        if (needUpdate) {
+            QString toolTipString = index.data(Qt::DisplayRole).toString();
+            QString toolTip;
+            if (showToolTip) {
+                QTextOption toolTipOption;
+                toolTipOption.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+                toolTipOption.setTextDirection(option->direction);
+                toolTipOption.setAlignment(QStyle::visualAlignment(option->direction, option->displayAlignment));
+                toolTip = DToolTip::wrapToolTipText(toolTipString, toolTipOption);
+            }
+            QAbstractItemModel *model = const_cast<QAbstractItemModel *>(index.model());
+            model->setData(index, toolTip, Qt::ToolTipRole);
+            model->setData(index, showToolTip, ItemDataRole::ViewItemShowToolTipRole);
+        }
+    }
     return layoutRect;
 }
 
@@ -2947,8 +3071,8 @@ void DStyledIconEngine::paint(QPainter *painter, const QPalette &palette, const 
     if (!m_drawFun)
         return;
 
-    painter->setBrush(palette.background());
-    painter->setPen(QPen(palette.foreground(), painter->pen().widthF()));
+    painter->setBrush(palette.window());
+    painter->setPen(QPen(palette.windowText(), painter->pen().widthF()));
 
     m_drawFun(painter, rect);
 }
@@ -2999,9 +3123,12 @@ void DStyledIconEngine::setFrontRole(const QWidget *widget, QPalette::ColorRole 
 
 void DStyledIconEngine::virtual_hook(int id, void *data)
 {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     if (id == IconNameHook) {
         *reinterpret_cast<QString *>(data) = m_iconName;
-    } else if (id == IsNullHook) {
+    } else
+#endif
+    if (id == IsNullHook) {
         *reinterpret_cast<bool *>(data) = !m_drawFun;
     }
 

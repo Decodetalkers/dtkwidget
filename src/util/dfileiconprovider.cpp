@@ -1,11 +1,12 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #include <DObjectPrivate>
 #include <DGuiApplicationHelper>
+#include <DIconTheme>
 
-#include "dtkwidget/util/dfileiconprovider.h"
+#include "dfileiconprovider.h"
 
 #include <QLibrary>
 #include <QMimeDatabase>
@@ -18,6 +19,7 @@
 #include <gtk/gtk.h>
 #endif
 
+DGUI_USE_NAMESPACE
 DWIDGET_BEGIN_NAMESPACE
 
 #ifdef USE_GTK_PLUS_2_0
@@ -123,7 +125,7 @@ QIcon DFileIconProviderPrivate::getFilesystemIcon(const QFileInfo &info) const
 
 QIcon DFileIconProviderPrivate::fromTheme(QString iconName) const
 {
-    QIcon icon = QIcon::fromTheme(iconName);
+    QIcon icon = DIconTheme::findQIcon(iconName);
 
     if (Q_LIKELY(!icon.isNull())) {
         return icon;
@@ -139,7 +141,7 @@ QIcon DFileIconProviderPrivate::fromTheme(QString iconName) const
         return icon;
     }
 
-    icon = QIcon::fromTheme(iconName);
+    icon = DIconTheme::findQIcon(iconName);
 
     return icon;
 }

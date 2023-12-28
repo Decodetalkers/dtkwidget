@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
@@ -12,8 +12,9 @@
 DWIDGET_BEGIN_NAMESPACE
 
 /*!
-  \brief DFloatingButton::DFloatingButton 用于定制化的button，根据传入的图标参数具体调整
-  \a parent
+@~english
+  @brief DFloatingButton::DFloatingButton 用于定制化的button，根据传入的图标参数具体调整
+  @a parent
  */
 DFloatingButton::DFloatingButton(QWidget *parent)
     : DIconButton(parent)
@@ -66,10 +67,6 @@ DStyleOptionButton DFloatingButton::baseStyleOption() const
 void DFloatingButton::initStyleOption(DStyleOptionButton *option) const
 {
     DIconButton::initStyleOption(option);
-    option->features = QStyleOptionButton::ButtonFeature(DStyleOptionButton::FloatingButton);
-
-    if (!option->dciIcon.isNull())
-        option->features |= QStyleOptionButton::ButtonFeature(DStyleOptionButton::HasDciIcon);
 }
 
 DWIDGET_END_NAMESPACE

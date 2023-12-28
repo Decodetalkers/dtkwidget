@@ -15,6 +15,8 @@
 #include <QDragMoveEvent>
 #include <QTimer>
 #include <QToolTip>
+#include <private/qhighdpiscaling_p.h>
+
 #include <DApplicationHelper>
 
 #include <private/qtabbar_p.h>
@@ -26,12 +28,13 @@
 #undef private
 #undef protected
 
-#include "dapplication.h"
+#include "dpalettehelper.h"
 #include "diconbutton.h"
 
 DWIDGET_BEGIN_NAMESPACE
 
-inline static bool verticalTabs(QTabBar::Shape shape)
+// TODO: Replace with verticalTabs in qtabbar_p.h when all versions of Qt support.
+constexpr inline static bool dtk_verticalTabs(QTabBar::Shape shape)
 {
     return shape == QTabBar::RoundedWest
            || shape == QTabBar::RoundedEast
@@ -42,7 +45,7 @@ inline static bool verticalTabs(QTabBar::Shape shape)
 // QBoxLayout::Direction与QTabBar::Shape之间的映射
 inline static QBoxLayout::Direction shapeToDirection (const QTabBar::Shape shape)
 {
-    if (verticalTabs(shape)) {
+    if (dtk_verticalTabs(shape)) {
         return QBoxLayout::TopToBottom;
     } else {
         return QBoxLayout::LeftToRight;
@@ -59,7 +62,7 @@ static inline bool horz(QBoxLayout::Direction dir)
 static inline QColor getColor(const QStyleOption *option, DPalette::ColorType type, const QWidget *w)
 {
     if (auto s = qobject_cast<DStyle*>(w->style())) {
-        const DPalette &pa = DApplicationHelper::instance()->palette(w, option->palette);
+        const DPalette &pa = DPaletteHelper::instance()->palette(w, option->palette);
         return s->generatedBrush(option, pa.brush(type), pa.currentColorGroup(), type).color();
     }
     return QColor();
@@ -173,7 +176,7 @@ public:
         connect(rightScrollButton, &DIconButton::clicked, d->rightB, &QToolButton::click);
 
         layout = new QBoxLayout(shapeToDirection(d->shape), qq);
-        layout->setMargin(0);
+        layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
         layout->setContentsMargins(0, 0, 0, 0);
 
@@ -271,7 +274,7 @@ public:
     // 更新布局内的控件的对齐方式
     void updateTabAlignment()
     {
-        Qt::Alignment tabAlignment = verticalTabs(shape()) ?
+        Qt::Alignment tabAlignment = dtk_verticalTabs(shape()) ?
                     Qt::AlignHCenter : Qt::AlignVCenter;
 
         for (int i = 0; i < layout->count(); i++) {
@@ -287,7 +290,7 @@ public:
 
         if (!d->validIndex(index))
             return;
-        d->tabList[index].dragOffset = offset;
+        d->at(index)->dragOffset = offset;
         layoutTab(index); // Make buttons follow tab
         update();
     }
@@ -333,12 +336,21 @@ public:
 
         void updateCurrentValue(const QVariant &current) Q_DECL_OVERRIDE
         {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
             dpriv->moveTabOffset(priv->tabList.indexOf(*tab), current.toInt());
+#else
+            dpriv->moveTabOffset(priv->tabList.indexOf(tab), current.toInt());
+#endif
         }
 
         void updateState(State, State newState) Q_DECL_OVERRIDE
         {
-            if (newState == Stopped) dpriv->moveTabFinished(priv->tabList.indexOf(*tab));
+            if (newState == Stopped)
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+                dpriv->moveTabFinished(priv->tabList.indexOf(*tab));
+#else
+                dpriv->moveTabFinished(priv->tabList.indexOf(tab));
+#endif
         }
 
     private:
@@ -487,7 +499,7 @@ void DTabBarPrivate::setupMovableTab()
 
     int taboverlap = style()->pixelMetric(QStyle::PM_TabBarTabOverlap, 0, this);
     QRect grabRect = tabRect(d->pressedIndex);
-    if (verticalTabs(shape()))
+    if (dtk_verticalTabs(shape()))
         grabRect.adjust(0, -taboverlap, 0, taboverlap);
     else
         grabRect.adjust(-taboverlap, 0, taboverlap, 0);
@@ -496,12 +508,16 @@ void DTabBarPrivate::setupMovableTab()
     grabImage.setDevicePixelRatio(devicePixelRatioF());
     grabImage.fill(Qt::transparent);
     QPainter p(&grabImage);
+#if QT_VERSION< QT_VERSION_CHECK(5, 13, 0)
     p.initFrom(this);
+#else
+    p.begin(this);
+#endif
 
     QStyleOptionTab tab;
     initStyleOption(&tab, d->pressedIndex);
     tab.position = QStyleOptionTab::OnlyOneTab;
-    if (verticalTabs(shape()))
+    if (dtk_verticalTabs(shape()))
         tab.rect.moveTopLeft(QPoint(0, taboverlap));
     else
         tab.rect.moveTopLeft(QPoint(taboverlap, 0));
@@ -515,10 +531,11 @@ void DTabBarPrivate::setupMovableTab()
     d->movingTab->raise();
 
     // Re-arrange widget order to avoid overlaps
-    if (d->tabList[d->pressedIndex].leftWidget)
-        d->tabList[d->pressedIndex].leftWidget->raise();
-    if (d->tabList[d->pressedIndex].rightWidget)
-        d->tabList[d->pressedIndex].rightWidget->raise();
+    if (d->at(d->pressedIndex)->leftWidget)
+        d->at(d->pressedIndex)->leftWidget->raise();
+    if (d->at(d->pressedIndex)->rightWidget)
+        d->at(d->pressedIndex)->rightWidget->raise();
+
     if (d->leftB)
         d->leftB->raise();
     if (d->rightB)
@@ -530,7 +547,7 @@ void DTabBarPrivate::updateMoveingTabPosition(const QPoint &mouse)
 {
     QTabBarPrivate *d = reinterpret_cast<QTabBarPrivate *>(qGetPtrHelper(d_ptr));
 
-    bool vertical = verticalTabs(d->shape);
+    bool vertical = dtk_verticalTabs(d->shape);
     int dragDistance;
     if (vertical) {
         dragDistance = (mouse.y() - d->dragStartPosition.y());
@@ -540,9 +557,9 @@ void DTabBarPrivate::updateMoveingTabPosition(const QPoint &mouse)
 
     if (!(d->pressedIndex == 0 && dragDistance < 0)
             && !(d->pressedIndex == d->tabList.count() - 1 && dragDistance > 0)) {
-        d->tabList[d->pressedIndex].dragOffset = dragDistance;
+        d->at(d->pressedIndex)->dragOffset = dragDistance;
     } else {
-        d->tabList[d->pressedIndex].dragOffset = 0;
+        d->at(d->pressedIndex)->dragOffset = 0;
     }
 
     QRect startingRect = tabRect(d->pressedIndex);
@@ -609,6 +626,10 @@ void DTabBarPrivate::setupDragableTab()
 
     drag->setPixmap(grabImage);
     drag->setMimeData(mime_data);
+
+    if (window()->windowHandle() && window()->windowHandle()->screen())
+        hotspot = QHighDpiScaling::mapPositionFromNative(hotspot, window()->windowHandle()->screen()->handle());
+
     drag->setHotSpot(hotspot);
 
     qRegisterMetaType<Qt::DropAction>();
@@ -632,25 +653,28 @@ void DTabBarPrivate::slide(int from, int to)
             || !d->validIndex(from)
             || !d->validIndex(to))
         return;
-    bool vertical = verticalTabs(d->shape);
+    bool vertical = dtk_verticalTabs(d->shape);
     int preLocation = vertical ? tabRect(from).y() : tabRect(from).x();
     setUpdatesEnabled(false);
     moveTab(from, to);
     setUpdatesEnabled(true);
     int postLocation = vertical ? tabRect(to).y() : tabRect(to).x();
     int length = postLocation - preLocation;
-
-    d->tabList[to].dragOffset -= length;
+    d->at(to)->dragOffset -= length;
 
     if (!d->isAnimated()) {
         moveTabFinished(to);
         return;
     }
 
-    QTabBarPrivate::Tab *tab = &d->tabList[to];
+    QTabBarPrivate::Tab *tab = d->at(to);
 
     if (!tab->animation)
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         tab->animation = reinterpret_cast<QTabBarPrivate::Tab::TabBarAnimation*>(new TabBarAnimation(tab, d, this));
+#else
+        tab->animation.reset(reinterpret_cast<QTabBarPrivate::Tab::TabBarAnimation*>(new TabBarAnimation(tab, d, this)));
+#endif
     tab->animation->setStartValue(tab->dragOffset);
     tab->animation->setEndValue(0);
     tab->animation->setEasingCurve(QEasingCurve::OutCubic);
@@ -662,35 +686,37 @@ void DTabBarPrivate::layoutTab(int index)
 {
     Q_ASSERT(index >= 0);
     QTabBarPrivate *d = reinterpret_cast<QTabBarPrivate *>(qGetPtrHelper(d_ptr));
+    QTabBarPrivate::Tab *tab = d->at(index);
+    bool vertical = dtk_verticalTabs(d->shape);
 
-    QTabBarPrivate::Tab &tab = d->tabList[index];
-    bool vertical = verticalTabs(d->shape);
-    if (!(tab.leftWidget || tab.rightWidget))
+    if (!(tab->leftWidget || tab->rightWidget))
         return;
 
     QStyleOptionTab opt;
     initStyleOption(&opt, index);
-    if (tab.leftWidget) {
+
+    if (tab->leftWidget) {
         QRect rect = style()->subElementRect(QStyle::SE_TabBarTabLeftButton, &opt, this);
         QPoint p = rect.topLeft();
         if ((index == d->pressedIndex) || d->paintWithOffsets) {
             if (vertical)
-                p.setY(p.y() + d->tabList[index].dragOffset);
+                p.setY(p.y() + d->at(index)->dragOffset);
             else
-                p.setX(p.x() + d->tabList[index].dragOffset);
+                p.setX(p.x() + d->at(index)->dragOffset);
         }
-        tab.leftWidget->move(p);
+        tab->leftWidget->move(p);
     }
-    if (tab.rightWidget) {
+
+    if (tab->rightWidget) {
         QRect rect = style()->subElementRect(QStyle::SE_TabBarTabRightButton, &opt, this);
         QPoint p = rect.topLeft();
         if ((index == d->pressedIndex) || d->paintWithOffsets) {
             if (vertical)
-                p.setY(p.y() + tab.dragOffset);
+                p.setY(p.y() + tab->dragOffset);
             else
-                p.setX(p.x() + tab.dragOffset);
+                p.setX(p.x() + tab->dragOffset);
         }
-        tab.rightWidget->move(p);
+        tab->rightWidget->move(p);
     }
 }
 
@@ -700,9 +726,9 @@ void DTabBarPrivate::moveTabFinished(int index)
     bool cleanup = (d->pressedIndex == index) || (d->pressedIndex == -1) || !d->validIndex(index);
     bool allAnimationsFinished = true;
 #ifndef QT_NO_ANIMATION
-    for(int i = 0; allAnimationsFinished && i < d->tabList.count(); ++i) {
-        const QTabBarPrivate::Tab &t = d->tabList.at(i);
-        if (t.animation && t.animation->state() == QAbstractAnimation::Running)
+    for (int i = 0; allAnimationsFinished && i < d->tabList.count(); ++i) {
+        const QTabBarPrivate::Tab *t = d->at(i);
+        if (t->animation && t->animation->state() == QAbstractAnimation::Running)
             allAnimationsFinished = false;
     }
 #endif //QT_NO_ANIMATION
@@ -710,7 +736,7 @@ void DTabBarPrivate::moveTabFinished(int index)
         if(d->movingTab)
             d->movingTab->setVisible(false); // We might not get a mouse release
         for (int i = 0; i < d->tabList.count(); ++i) {
-            d->tabList[i].dragOffset = 0;
+            d->at(i)->dragOffset = 0;
         }
         if (d->pressedIndex != -1 && d->movable) {
             d->pressedIndex = -1;
@@ -721,7 +747,7 @@ void DTabBarPrivate::moveTabFinished(int index)
     } else {
         if (!d->validIndex(index))
             return;
-        d->tabList[index].dragOffset = 0;
+        d->at(index)->dragOffset = 0;
     }
     update();
 }
@@ -739,12 +765,16 @@ void DTabBarPrivate::makeVisible(int index)
 
     if (!d->validIndex(index))
         return;
+    const QRect tabRect = d->at(index)->rect;
 
-    const QRect tabRect = d->tabList.at(index).rect;
     const int oldScrollOffset = d->scrollOffset;
-    const bool horiz = !verticalTabs(d->shape);
+    const bool horiz = !dtk_verticalTabs(d->shape);
     const int extra_width = 2 * qMax(style()->pixelMetric(QStyle::PM_TabBarScrollButtonWidth, 0, this),
+    #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
                                      QApplication::globalStrut().width());
+#else
+                                    0);
+#endif
     const int available = (horiz ? width() : height()) - extra_width;
     const int start = horiz ? tabRect.left() : tabRect.top();
     const int end = horiz ? tabRect.right() : tabRect.bottom();
@@ -754,7 +784,9 @@ void DTabBarPrivate::makeVisible(int index)
         d->scrollOffset = end - available + 1;
 
     d->leftB->setEnabled(d->scrollOffset > 0);
-    const int last = horiz ? d->tabList.last().rect.right() : d->tabList.last().rect.bottom();
+
+    const int last = horiz ? d->at(d->tabList.size() - 1)->rect.right()
+                           : d->at(d->tabList.size() - 1)->rect.bottom();
     d->rightB->setEnabled(last - d->scrollOffset >= available);
     if (oldScrollOffset != d->scrollOffset) {
         layoutWidgets();
@@ -770,7 +802,7 @@ void DTabBarPrivate::autoScrollTabs(const QPoint &mouse)
     }
 
     QTabBarPrivate *d = reinterpret_cast<QTabBarPrivate *>(qGetPtrHelper(d_ptr));
-    bool vertical = verticalTabs(d->shape);
+    bool vertical = dtk_verticalTabs(d->shape);
     const QSize &size_hint = this->size();
     int scroll_distance = qMin(50, vertical ? rect.height() / 3 : rect.width() / 3);
 
@@ -864,7 +896,7 @@ void DTabBarPrivate::ensureScrollTabsAnimation()
         d->scrollOffset = v;
 
         if (d->dragInProgress && d->validIndex(d->pressedIndex)) {
-            if (verticalTabs(d->shape)) {
+            if (dtk_verticalTabs(d->shape)) {
                 d->dragStartPosition.setY(dragStartPosition.y() + scrollOffset - v);
             } else {
                 d->dragStartPosition.setX(dragStartPosition.x() + scrollOffset - v);
@@ -962,7 +994,7 @@ int DTabBarPrivate::tabInsertIndexFromMouse(QPoint pos)
     int current = tabAt(pos);
 
     QTabBarPrivate *d = reinterpret_cast<QTabBarPrivate *>(qGetPtrHelper(d_ptr));
-    bool vertical = verticalTabs(this->shape());
+    bool vertical = dtk_verticalTabs(this->shape());
 
     if (!d->validIndex(current)){
         if (vertical)
@@ -1174,7 +1206,7 @@ void DTabBarPrivate::paintEvent(QPaintEvent *e)
     int selected = -1;
     int cutLeft = -1;
     int cutRight = -1;
-    bool vertical = verticalTabs(d->shape);
+    bool vertical = dtk_verticalTabs(d->shape);
     QStyleOptionTab cutTabLeft;
     QStyleOptionTab cutTabRight;
     selected = d->currentIndex;
@@ -1195,20 +1227,23 @@ void DTabBarPrivate::paintEvent(QPaintEvent *e)
         initStyleOption(&tab, i);
         // 强制让文本居中
         tab.rightButtonSize = QSize();
-        if (d->paintWithOffsets && d->tabList[i].dragOffset != 0) {
+
+        if (d->paintWithOffsets && d->at(i)->dragOffset != 0) {
             if (vertical) {
-                tab.rect.moveTop(tab.rect.y() + d->tabList[i].dragOffset);
+                tab.rect.moveTop(tab.rect.y() + d->at(i)->dragOffset);
             } else {
-                tab.rect.moveLeft(tab.rect.x() + d->tabList[i].dragOffset);
+                tab.rect.moveLeft(tab.rect.x() + d->at(i)->dragOffset);
             }
         }
         if (!(tab.state & QStyle::State_Enabled)) {
             tab.palette.setCurrentColorGroup(QPalette::Disabled);
         }
 
-        // If this tab is partially obscured, make a note of it so that we can pass the information
-        // along when we draw the tear.
-        QRect tabRect = d->tabList[i].rect;
+        // If this tab is partially obscured, make a note of it so that we can
+        // pass the information along when we draw the tear.
+
+        QRect tabRect = d->at(i)->rect;
+
         int tabStart = vertical ? tabRect.top() : tabRect.left();
         int tabEnd = vertical ? tabRect.bottom() : tabRect.right();
         if (tabStart < scrollRect.left() + d->scrollOffset) {
@@ -1244,13 +1279,15 @@ void DTabBarPrivate::paintEvent(QPaintEvent *e)
         initStyleOption(&tab, selected);
         // 强制让文本居中
         tab.rightButtonSize = QSize();
-        if (d->paintWithOffsets && d->tabList[selected].dragOffset != 0) {
+
+        if (d->paintWithOffsets && d->at(selected)->dragOffset != 0) {
             if (vertical) {
-                tab.rect.moveTop(tab.rect.y() + d->tabList[selected].dragOffset);
+                tab.rect.moveTop(tab.rect.y() + d->at(selected)->dragOffset);
             } else {
-                tab.rect.moveLeft(tab.rect.x() + d->tabList[selected].dragOffset);
+                tab.rect.moveLeft(tab.rect.x() + d->at(selected)->dragOffset);
             }
         }
+
         if (!d->dragInProgress) {
             q->paintTab(&p, selected, tab);
 //            p.drawControl(QStyle::CE_TabBarTab, tab); // Qt源码写法
@@ -1262,7 +1299,7 @@ void DTabBarPrivate::paintEvent(QPaintEvent *e)
             }
         } else {
             int taboverlap = style()->pixelMetric(QStyle::PM_TabBarTabOverlap, 0, this);
-            if (verticalTabs(d->shape))
+            if (dtk_verticalTabs(d->shape))
                 d->movingTab->setGeometry(tab.rect.adjusted(-taboverlap, 0, taboverlap, 0));
             else
                 d->movingTab->setGeometry(tab.rect.adjusted(-taboverlap, 0, taboverlap, 0));
@@ -1294,12 +1331,16 @@ void DTabBarPrivate::mouseMoveEvent(QMouseEvent *event)
     if (d->pressedIndex != -1
         && event->buttons() == Qt::NoButton)
         moveTabFinished(d->pressedIndex);
-
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     int offset_x = qAbs(event->x() - d->dragStartPosition.x());
     int offset_y = qAbs(event->y() - d->dragStartPosition.y());
+#else
+    int offset_x = qAbs(event->position().x() - d->dragStartPosition.x());
+    int offset_y = qAbs(event->position().y() - d->dragStartPosition.y());
+#endif
     bool valid_pressed_index = d->validIndex(d->pressedIndex);
 
-    if (verticalTabs(d->shape)) {
+    if (dtk_verticalTabs(d->shape)) {
         std::swap(offset_x, offset_y);
     }
 
@@ -1497,86 +1538,112 @@ QTabBarPrivate *DTabBarPrivate::dd() const
 }
 
 /*!
-  \class Dtk::Widget::DTabBar
+@~english
+  @class Dtk::Widget::DTabBar
   \inmodule dtkwidget
-  \brief DTabBar 是一个标签栏控件，是在 QTabBar 基础之上进行扩展增强.
-  
-  增加了许多特性，比如：新建按钮，支持向外拖放事件...该控件目前被深度编辑器中所使用。
+  @brief DTabBar is a tab bar control that is an extension and enhancement of QTabBar
+
+  Added many features, such as a new button and support for dragging and dropping events outward This control is currently used in the depth editor.
  */
 
 /*!
-  \fn void DTabBar::currentChanged(int index)
-  \brief 当前索引位置改变.
+@~english
+  @fn void DTabBar::currentChanged(int index)
+  @brief The current index position has changed
 
-  \a index 改变的索引值.
+  @param[in] index Changed index value
  */
-/*!
-  \fn void DTabBar::tabCloseRequested(int index)
-  \brief 点击关闭后发出.
 
-  \a index 关闭的索引值.
- */
 /*!
-  \fn void DTabBar::tabMoved(int from, int to)
-  \brief 索引位置发生变化
+@~english
+  @fn void DTabBar::tabCloseRequested(int index)
+  @brief Click to close and send out
 
-  \a from 索引位置变化的初始值， \a to 位置变化后的索引值.
+  @param[in] index Closed index value
  */
-/*!
-  \fn void DTabBar::tabIsInserted(int index)
-  \brief 新标签已插入.
 
-  \a index 被插入标签的索引值.
- */
 /*!
-  \fn void DTabBar::tabIsRemoved(int index)
-  \brief 标签已删除.
+@~english
+  @fn void DTabBar::tabMoved(int from, int to)
+  @brief Index position has changed
 
-  \a index 被删除标签的索引值.
+  @param[in] a Initial value of change in index position from， @param[in] to Index value after position change
  */
-/*!
-  \fn void DTabBar::tabBarClicked(int index)
-  \brief 点击索引标签.
 
-  \a index 点击标签的索引值.
- */
 /*!
-  \fn void DTabBar::tabBarDoubleClicked(int index)
-  \brief 双击索引标签.
+@~english
+  @fn void DTabBar::tabIsInserted(int index)
+  @brief The new label has been inserted
 
-  \a index 双击标记的索引值.
+  @param[in] index The index value of the inserted label
  */
-/*!
-  \fn void DTabBar::tabAddRequested()
-  \brief 新标签加入.
- */
-/*!
-  \fn void DTabBar::tabReleaseRequested(int index)
-  \brief 索引标签鼠标释放.
 
-  \a index 标签释放的索引值.
- */
 /*!
-  \fn void DTabBar::dragActionChanged(Qt::DropAction action)
-  \brief 鼠标形状发生变化.
+@~english
+  @fn void DTabBar::tabIsRemoved(int index)
+  @brief The label has been deleted
 
-  \a action 改变的拖拽动作.
+  @param[in] index The index value of the deleted label
  */
-/*!
-  \fn void DTabBar::tabDroped(int index, Qt::DropAction action, QObject *target)
-  \brief 标签拖放.
 
-  \a index 拖放的标签索引， \a action 拖放的动作, \a target 被拖放的标签 DTabBar 实例
- */
 /*!
-  \fn void DTabBar::dragStarted()
-  \brief 开始拖起.
- */
-/*!
-  \fn void DTabBar::dragEnd(Qt::DropAction action)
-  \brief 拖放结束.
+@~english
+  @fn void DTabBar::tabBarClicked(int index)
+  @brief Click on the index tab
 
-  \a action 拖放动作.
+  @param[in] index Click on the index value of the label
+ */
+
+/*!
+@~english
+  @fn void DTabBar::tabBarDoubleClicked(int index)
+  @brief Double click on the index label
+
+  @param[in] index Double click on the index value of the tag
+ */
+
+/*!
+@~english
+  @fn void DTabBar::tabAddRequested()
+  @brief Add a new label
+ */
+
+/*!
+@~english
+  @fn void DTabBar::tabReleaseRequested(int index)
+  @brief Index label mouse release
+
+  @param[in] index Index value for label release
+ */
+
+/*!
+@~english
+  @fn void DTabBar::dragActionChanged(Qt::DropAction action)
+  @brief The shape of the mouse has changed
+
+  @param[in] action Drag and drop actions for changes
+ */
+
+/*!
+@~english
+  @fn void DTabBar::tabDroped(int index, Qt::DropAction action, QObject *target)
+  @brief Label drag and drop
+
+  @param[in] index Drag and drop tag indexing， @param[in] action Drag and drop action, @param[in] target Dragged DTabBar instance
+ */
+
+/*!
+@~english
+  @fn void DTabBar::dragStarted()
+  @brief Start dragging
+ */
+
+/*!
+@~english
+  @fn void DTabBar::dragEnd(Qt::DropAction action)
+  @brief End dragging
+
+  @param[in] action Drag and drop action.
  */
 
 DTabBar::DTabBar(QWidget *parent)
@@ -1587,9 +1654,10 @@ DTabBar::DTabBar(QWidget *parent)
 }
 
 /*!
-  \brief 设置索引标签的最小尺寸.
+@~english
+  @brief Set the minimum size of the index tag.
 
-  \a index 被设置标签的索引值，size ，\a size 最小大小.
+  @param[in] index The index value of the set tag. @param[in] size Minimum size.
  */
 void DTabBar::setTabMinimumSize(int index, const QSize &size)
 {
@@ -1606,9 +1674,10 @@ void DTabBar::setTabMinimumSize(int index, const QSize &size)
 }
 
 /*!
-  \brief 设置索引标签的最大尺寸.
+@~english
+  @brief Set the maximum size of the index tag.
 
-  \a index 被设置标签的索引值，size ，\a size 最大大小.
+  @param[in] index The index value of the set tag， @param[in] size Maximum size.
  */
 void DTabBar::setTabMaximumSize(int index, const QSize &size)
 {
@@ -1625,9 +1694,10 @@ void DTabBar::setTabMaximumSize(int index, const QSize &size)
 }
 
 /*!
-  \brief 新建标签栏按钮是否可见.
+@~english
+  @brief The new tab button is visible or not
 
-  \return 新建按钮可见，返回 ture 否则，返回 false 。
+  @return The new tab button is visible then return true.Otherwise return false.
  */
 bool DTabBar::visibleAddButton() const
 {
@@ -1637,9 +1707,10 @@ bool DTabBar::visibleAddButton() const
 }
 
 /*!
-  \brief 标签栏形状.
+@~english
+  @brief The shape of the tab bar.
 
-  \return 返回当前 DTabBar 实例的标签栏形状.
+  @return Return the shape of the current DTabBar instance's tab bar.
  */
 QTabBar::Shape DTabBar::shape() const
 {
@@ -1647,16 +1718,17 @@ QTabBar::Shape DTabBar::shape() const
 }
 
 /*!
-  \brief 设置标签栏形状.
+@~english
+  @brief Set the shape of the tab bar.
 
-  \a shape 标签栏形状.
+  @param[in] shape Tab bar shape.
  */
 void DTabBar::setShape(QTabBar::Shape shape)
 {
     D_D(DTabBar);
 
-    bool old_vertical = verticalTabs(d_func()->shape());
-    bool new_vertical = verticalTabs(shape);
+    bool old_vertical = dtk_verticalTabs(d_func()->shape());
+    bool new_vertical = dtk_verticalTabs(shape);
 
     d->setShape(shape);
 
@@ -1678,10 +1750,11 @@ void DTabBar::setShape(QTabBar::Shape shape)
 }
 
 /*!
-  \brief 添加一个新的标签，返回新标签的索引.
+@~english
+  @brief Add a new tab and return the index of the new tab.
 
-  \a text 新标签的标题文本.
-  \return 返回新标签的索引.
+  @param[in] text Title text of the new tab.
+  @return Return the index of the new tab.
  */
 int DTabBar::addTab(const QString &text)
 {
@@ -1689,10 +1762,11 @@ int DTabBar::addTab(const QString &text)
 }
 
 /*!
-  \brief 添加一个新的标签，包含图标、文本.
+@~english
+  @brief Add a new tab with an icon and text.
 
-  \a icon 新标签的标题图标， \a text 新标签的标题文本.
-  \return 返回新标签的索引.
+  @param[in] icon Title icon of the new tab， @param[in] text Title text of the new tab.
+  @return Return the index of the new tab.
  */
 int DTabBar::addTab(const QIcon &icon, const QString &text)
 {
@@ -1700,15 +1774,15 @@ int DTabBar::addTab(const QIcon &icon, const QString &text)
 }
 
 /*!
-  \brief 插入一个文本标签.
+@~english
+  @brief Insert a text label.
 
-  \a index 被插入的标签索引值， \a text 新标签的标题文本.
+  @param[in] index The index value of the inserted label. @param[in] text Title text of the new label.
 
-  \warning 如果参数 \a index 超过了当前索引，将会在最后添加
-  一个新标签.
+  @warning if @param[in] index exceeds the current index, a new label will be added at the end.
 
-  \return 返回插入后的新标签索引.
-  \sa QTabBar::insertTab()
+  @return ndex of the newly inserted label.
+  @sa QTabBar::insertTab()
  */
 int DTabBar::insertTab(int index, const QString &text)
 {
@@ -1716,11 +1790,14 @@ int DTabBar::insertTab(int index, const QString &text)
 }
 
 /*!
-  \brief 插入一个图标文本标签.
+@~english
+  @brief Insert an icon text label.
 
-  \a index 被插入的标签索引值，\a icon 新标签的图标，\a text 新标签文本
+  @param[in] index Index value at which the label will be inserted.
+  @param[in] icon Icon of the new label.
+  @param[in] text Text of the new label.
 
-  \return 返回插入后的新标签索引.
+  @return Index of the newly inserted label.
  */
 int DTabBar::insertTab(int index, const QIcon &icon, const QString &text)
 {
@@ -1728,9 +1805,10 @@ int DTabBar::insertTab(int index, const QIcon &icon, const QString &text)
 }
 
 /*!
-  \brief 移除标签索引位置
+@~english
+  @brief Remove the label at the specified index position.
 
-  \a index 被移除的标签索引值.
+  @param[in] index Index value of the label to be removed.
  */
 void DTabBar::removeTab(int index)
 {
@@ -1738,9 +1816,11 @@ void DTabBar::removeTab(int index)
 }
 
 /*!
-  \brief 移动标签索引位置
+@~english
+  @brief Check if the label at the specified index position is enabled.
 
-  \a from 被移动前的标签索引，\a to 被移动后的标签索引.
+  @param[in] index Label index.
+  @return True if the label is enabled, false otherwise.
  */
 void DTabBar::moveTab(int from, int to)
 {
@@ -1748,11 +1828,11 @@ void DTabBar::moveTab(int from, int to)
 }
 
 /*!
-  \brief 是否启用标签索引位置
+@~english
+  @brief 是否启用标签索引位置
 
-  \a index 标签索引值.
-
-  \return 启用标签索引返回 true，否则返回 false.
+  @param[in] index 标签索引值.
+  @return 启用标签索引返回 true，否则返回 false.
  */
 bool DTabBar::isTabEnabled(int index) const
 {
@@ -1760,9 +1840,11 @@ bool DTabBar::isTabEnabled(int index) const
 }
 
 /*!
-  \brief 设置标签索引位置启用状态
+@~english
+  @brief Set the enabled state of the label at the specified index position.
 
-  \a index 标签索引，\a enable 是否启用.
+  @param[in] index Label index.
+  @param[in] enable Whether to enable the label.
  */
 void DTabBar::setTabEnabled(int index, bool enable)
 {
@@ -1770,10 +1852,11 @@ void DTabBar::setTabEnabled(int index, bool enable)
 }
 
 /*!
-  \brief 返回标签索引位置文本.
+@~english
+  @brief Return the text of the label at the specified index position.
 
-  \a index 标签索引.
-  \return 返回对应索引的文本.
+  @param[in] index Label index.
+  @return Text of the corresponding label.
  */
 QString DTabBar::tabText(int index) const
 {
@@ -1781,9 +1864,11 @@ QString DTabBar::tabText(int index) const
 }
 
 /*!
-  \brief 设置标签索引位置文本.
+@~english
+  @brief Set the text of the label at the specified index position.
 
-  \a index 标签索引， \a text 标签文本.
+  @param[in] index Label index.
+  @param[in] text Label text.
  */
 void DTabBar::setTabText(int index, const QString &text)
 {
@@ -1791,10 +1876,11 @@ void DTabBar::setTabText(int index, const QString &text)
 }
 
 /*!
-  \brief 返回标签索引位置图标.
+@~english
+  @brief Return the icon of the label at the specified index position.
 
-  \a index 标签索引.
-  \return 对应标签的图标.
+  @param[in] index Label index.
+  @return Icon of the corresponding label.
  */
 QIcon DTabBar::tabIcon(int index) const
 {
@@ -1802,9 +1888,10 @@ QIcon DTabBar::tabIcon(int index) const
 }
 
 /*!
-  \brief 设置标签索引位置图标.
+@~english
+  @brief Set the icon of the label at the specified index position.
 
-  \a index 标签索引， \a icon 对应的标签图标.
+  @param[in] index label index， @param[in] icon Corresponding label icon.
  */
 void DTabBar::setTabIcon(int index, const QIcon &icon)
 {
@@ -1812,9 +1899,10 @@ void DTabBar::setTabIcon(int index, const QIcon &icon)
 }
 
 /*!
-  \brief 缩略模式.
+@~english
+  @brief Truncation mode.
 
-  \return 返回标签的文本缩略模式.
+  @return Return the text truncation mode of the label.
  */
 Qt::TextElideMode DTabBar::elideMode() const
 {
@@ -1822,9 +1910,10 @@ Qt::TextElideMode DTabBar::elideMode() const
 }
 
 /*!
-  \brief 设置缩略模式
+@~english
+  @brief Set the truncation mode for the text.
 
-  \a mode 文本缩略模式.
+  @param[in] mode Text truncation mode.
  */
 void DTabBar::setElideMode(Qt::TextElideMode mode)
 {
@@ -1834,9 +1923,10 @@ void DTabBar::setElideMode(Qt::TextElideMode mode)
 #ifndef QT_NO_TOOLTIP
 
 /*!
-  \brief 设置标签索引位置提示文本.
+@~english
+  @brief Set the tooltip text of the label at the specified index position.
 
-  \a index 标签索引, \a tip 提示文本.
+  @param[in] index Label index., @param[in] tip Tooltip text..
  */
 void DTabBar::setTabToolTip(int index, const QString &tip)
 {
@@ -1844,9 +1934,10 @@ void DTabBar::setTabToolTip(int index, const QString &tip)
 }
 
 /*!
-  \brief 返回标签索引位置提示文本.
+@~english
+  @brief Return the tooltip text of the label at the specified index position.
 
-  \a index 标签索引.
+  @param[in] index label index
  */
 QString DTabBar::tabToolTip(int index) const
 {
@@ -1867,9 +1958,10 @@ QString DTabBar::tabWhatsThis(int index) const
 #endif
 
 /*!
-  \brief 设置标签索引位置数据.
+@~english
+  @brief Set the data of the label at the specified index position.
 
-  \a index 标签索引, \a data 标签数据.
+  @param[in] index label index, @param[in] data label data
  */
 void DTabBar::setTabData(int index, const QVariant &data)
 {
@@ -1877,10 +1969,11 @@ void DTabBar::setTabData(int index, const QVariant &data)
 }
 
 /*!
-  \brief 返回标签索引位置数据.
+@~english
+  @brief Return the data of the label at the specified index position.
 
-  \a index 标签索引.
-  \return 标签数据.
+  @param[in] index label index
+  @return label data
  */
 QVariant DTabBar::tabData(int index) const
 {
@@ -1888,10 +1981,11 @@ QVariant DTabBar::tabData(int index) const
 }
 
 /*!
-  \brief 返回标签索引位置矩形.
+@~english
+  @brief Return the rectangle of the label at the specified index position.
 
-  \a index 标签索引.
-  \return 标签矩形.
+  @param[in] index Label index.
+  @return Label rectangle.
  */
 QRect DTabBar::tabRect(int index) const
 {
@@ -1903,10 +1997,11 @@ QRect DTabBar::tabRect(int index) const
 }
 
 /*!
-  \brief 根据位置返回标签索引位置.
+@~english
+  @brief Return the label index position based on the position.
 
-  \a pos 对应标签坐标，可以时标签内的任意坐标.
-  \return 返回对应标签的索引值.
+  @param[in] pos Coordinates of the corresponding label, which can be any coordinates within the label.
+  @return Return the index value of the corresponding label.
  */
 int DTabBar::tabAt(const QPoint &pos) const
 {
@@ -1914,9 +2009,10 @@ int DTabBar::tabAt(const QPoint &pos) const
 }
 
 /*!
-  \brief 当前的标签索引位置.
+@~english
+  @brief Current position of the tab index.
 
-  \return 当前标签索引.
+  @return Current tab index.
  */
 int DTabBar::currentIndex() const
 {
@@ -1924,9 +2020,10 @@ int DTabBar::currentIndex() const
 }
 
 /*!
-  \brief 标签总数.
+@~english
+  @brief the total num of labels
 
-  \return 返回标签总数.
+  @return return the total num of labels
  */
 int DTabBar::count() const
 {
@@ -1944,9 +2041,10 @@ bool DTabBar::drawBase() const
 }
 
 /*!
-  \brief 图标大小.
+@~english
+  @brief the size of icon
 
-  \return 返回图标大小.
+  @return return the size of icon
  */
 QSize DTabBar::iconSize() const
 {
@@ -1954,9 +2052,10 @@ QSize DTabBar::iconSize() const
 }
 
 /*!
-  \brief 设置图标大小.
+@~english
+  @brief set the size of icon
 
-  \a size 图标大小.
+  @param[in] size the size of icon
  */
 void DTabBar::setIconSize(const QSize &size)
 {
@@ -1974,9 +2073,10 @@ void DTabBar::setUsesScrollButtons(bool useButtons)
 }
 
 /*!
-  \brief 标签栏是否可关闭.
+@~english
+  @brief The tab bar is closable or not
 
-  \return 返回标签是否可关闭.
+  @return Return whether the label is closable.
  */
 bool DTabBar::tabsClosable() const
 {
@@ -1984,9 +2084,10 @@ bool DTabBar::tabsClosable() const
 }
 
 /*!
-  \brief 设置标签栏是否可关闭.
+@~english
+  @brief Set whether the tab bar is closable or not.
 
-  \a closable 标签是否可关闭.
+  @param[in] closable the label is closable or not
  */
 void DTabBar::setTabsClosable(bool closable)
 {
@@ -2115,11 +2216,12 @@ QWindow *DTabBar::dragIconWindow() const
 }
 
 /*!
-  \brief 启用直角样式的 Tabbar.
+@~english
+  @brief 启用直角样式的 Tabbar.
 
   此风格适用于切换窗口的操作,多用于支持多开的应用.
 
-  \a enable true 启用，false 恢复
+  @param[in] enable true 启用，false 恢复
  */
 void DTabBar::setEnabledEmbedStyle(bool enable)
 {
@@ -2147,9 +2249,10 @@ void DTabBar::setEnabledEmbedStyle(bool enable)
 }
 
 /*!
-  \brief 设置 tab 标签文字对齐方式.
+@~english
+  @brief 设置 tab 标签文字对齐方式.
 
-  \a alignment 对齐方式.
+  @param[in] alignment 对齐方式.
  */
 void DTabBar::setTabLabelAlignment(Qt::Alignment alignment)
 {
@@ -2157,9 +2260,10 @@ void DTabBar::setTabLabelAlignment(Qt::Alignment alignment)
 }
 
 /*!
-  \brief 设置当前标签索引位置.
+@~english
+  @brief 设置当前标签索引位置.
 
-  \a index 标签索引.
+  @param[in] index 标签索引.
  */
 void DTabBar::setCurrentIndex(int index)
 {
@@ -2167,9 +2271,10 @@ void DTabBar::setCurrentIndex(int index)
 }
 
 /*!
-  \brief 设置新建标签按钮是否显示.
+@~english
+  @brief 设置新建标签按钮是否显示.
 
-  \a visibleAddButton 新建按钮是否可视.
+  @param[in] visibleAddButton 新建按钮是否可视.
  */
 void DTabBar::setVisibleAddButton(bool visibleAddButton)
 {
@@ -2180,9 +2285,10 @@ void DTabBar::setVisibleAddButton(bool visibleAddButton)
 }
 
 /*!
-  \brief 设置开始拖动距离.
+@~english
+  @brief 设置开始拖动距离.
 
-  \a startDragDistance 开始拖动的距离.
+  @param[in] startDragDistance 开始拖动的距离.
  */
 void DTabBar::setStartDragDistance(int startDragDistance)
 {
@@ -2190,9 +2296,10 @@ void DTabBar::setStartDragDistance(int startDragDistance)
 }
 
 /*!
-  \brief 设置颜色.
+@~english
+  @brief 设置颜色.
 
-  \a maskColor 遮罩颜色.
+  @param[in] maskColor 遮罩颜色.
  */
 void DTabBar::setMaskColor(QColor maskColor)
 {
@@ -2375,7 +2482,11 @@ QPixmap DTabBar::createDragPixmapFromTab(int index, const QStyleOptionTab &optio
     tab.rect.moveTopLeft(QPoint(taboverlap, 0));
 
     QPainter p(&grabImage);
+#if QT_VERSION < QT_VERSION_CHECK(5, 13, 0)
     p.initFrom(d_func());
+#else
+    p.begin(const_cast<DTabBarPrivate *>(d_func()));
+#endif
     paintTab(&p, index, tab);
 
     return grabImage;
@@ -2449,7 +2560,7 @@ QSize DTabBar::tabSizeHint(int index) const
     QSize size = d->QTabBar::tabSizeHint(index);
 
     QTabBarPrivate *dd = reinterpret_cast<QTabBarPrivate *>(qGetPtrHelper(d->d_ptr));
-    bool is_vertical = verticalTabs(dd->shape);
+    bool is_vertical = dtk_verticalTabs(dd->shape);
 
     if (is_vertical) {
         size.setWidth(qMax(size.width(), dd->leftB->width()));

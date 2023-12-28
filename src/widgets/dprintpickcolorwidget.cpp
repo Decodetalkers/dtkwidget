@@ -16,10 +16,11 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QDebug>
-#include <QRegExp>
-#include <QRegExpValidator>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
 #include <QKeyEvent>
 #include <DWindowManagerHelper>
+#include <DIconTheme>
 
 #define PICKCOLOR_RADIUS 8
 const int IMAGE_HEIGHT = 10;
@@ -94,7 +95,7 @@ void DPrintPickColorWidget::initUI()
     DLabel *valueLabel = new DLabel(qApp->translate("PickColorWidget", "Color"));
     valueLineEdit = new DLineEdit;
     valueLineEdit->setClearButtonEnabled(false);
-    valueLineEdit->lineEdit()->setValidator(new QRegExpValidator(QRegExp("[0-9A-Fa-f]{6,8}"), this));
+    valueLineEdit->lineEdit()->setValidator(new QRegularExpressionValidator(QRegularExpression("[0-9A-Fa-f]{6,8}"), this));
     valueLayout->setContentsMargins(0, 0, 0, 0);
     valueLayout->addWidget(valueLabel);
     valueLayout->addSpacing(5);
@@ -112,7 +113,7 @@ void DPrintPickColorWidget::initUI()
     bEdit->setClearButtonEnabled(false);
     pickColorBtn = new DIconButton(this);
     pickColorBtn->setFixedSize(55, 36);
-    pickColorBtn->setIcon(QIcon::fromTheme("dorpper_normal"));
+    pickColorBtn->setIcon(DIconTheme::findQIcon("dorpper_normal"));
     pickColorBtn->setIconSize(QSize(32, 32));
     pickColorBtn->setEnabled(DWindowManagerHelper::instance()->hasComposite());
     rgbPickColorLayout->addWidget(rgbLabel);
@@ -373,7 +374,11 @@ void ColorLabel::paintEvent(QPaintEvent *)
     painter.drawImage(this->rect(), backgroundImage);
 }
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 void ColorLabel::enterEvent(QEvent *e)
+#else
+void ColorLabel::enterEvent(QEnterEvent *e)
+#endif
 {
     m_lastCursor = this->cursor();
     qApp->setOverrideCursor(pickColorCursor());

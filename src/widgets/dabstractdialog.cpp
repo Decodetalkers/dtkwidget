@@ -4,7 +4,9 @@
 
 #include <QMouseEvent>
 #include <QApplication>
+#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
 #include <QDesktopWidget>
+#endif
 #include <QPushButton>
 #include <QScreen>
 #include <QPainter>
@@ -58,10 +60,9 @@ void DAbstractDialogPrivate::init(bool blurIfPossible)
         bgBlurWidget->setMaskColor(DBlurEffectWidget::AutoColor);
         bgBlurWidget->setMaskAlpha(204); // 80%
 
-        if (!DWindowManagerHelper::instance()->hasBlurWindow()
-                && DGuiApplicationHelper::instance()->isTabletEnvironment()) {
+        // blur if possible(wm support blur window)...
+        if (!DWindowManagerHelper::instance()->hasBlurWindow())
             blurIfPossible = false;
-        }
 
         bgBlurWidget->setBlurEnabled(blurIfPossible);
         q->setAttribute(Qt::WA_TranslucentBackground, blurIfPossible);
@@ -107,6 +108,7 @@ QRect DAbstractDialogPrivate::getParentGeometry() const
 }
 
 /*!
+@~english
     \class Dtk::Widget::DAbstractDialog
     \inmodule dtkwidget
     \brief 可以使用 DAbstractDialog 类创建符合 DDE 风格的对话框窗口.
@@ -122,7 +124,7 @@ QRect DAbstractDialogPrivate::getParentGeometry() const
     Qt 组件或 DTK 组件不同。一个对话框总是一个顶层控件（top-level widget），但如果它有一个父组件
     则对话框的默认位置将会位于其父组件的正中央，并共用其父控件的任务栏入口。
 
-    \section1 modal 模态对话框
+    @details modal 模态对话框
 
     一个 \b{模态} （modal）对话框可以阻止对模态对话框之外的原可见窗体的操作，如请求用户输入
     文件名的对话框或是对应用程序本身进行设置的对话框就常是模态对话框。模态对话框可以是
@@ -175,10 +177,9 @@ QRect DAbstractDialogPrivate::getParentGeometry() const
 */
 
 /*!
+@~english
   \brief DAbstractDialog::DAbstractDialog constructs a DAbstractDialog instance.
   \a parent is the parent widget to be used.
-  
-  \brief 构造一个 DAbstractDialog 实例
  */
 DAbstractDialog::DAbstractDialog(QWidget *parent) :
     QDialog(parent),
@@ -195,25 +196,25 @@ DAbstractDialog::DAbstractDialog(bool blurIfPossible, QWidget *parent)
 }
 
 /*!
+@~english
   \enum Dtk::Widget::DAbstractDialog::DisplayPosition
-  
+
   \brief The DisplayPosition enum contains the position options that can be specified by all dialogs.
   \brief DAbstractDialog::DisplayPosition 表示对话框的显示位置。
-  
+
   \value Center
   display this dialog in the center of the screen
   在屏幕中央显示对话框。
-  
+
   \value TopRight
   display this dialog in the top right of the screen
   在屏幕右上角显示对话框。
  */
 
 /*!
+@~english
   \brief DAbstractDialog::displayPosition
   \return the display position of this dialog.
-  
-  \brief 获取对话框显示位置
  */
 DAbstractDialog::DisplayPosition DAbstractDialog::displayPosition() const
 {
@@ -241,9 +242,8 @@ void DAbstractDialog::setGeometry(const QRect &rect)
 }
 
 /*!
+@~english
   \brief DAbstractDialog::moveToCenter moves the dialog to the center of the screen or its parent widget.
-  
-  \brief 将对话框移动至屏幕中央或其父控件的中央。
  */
 void DAbstractDialog::moveToCenter()
 {
@@ -253,9 +253,8 @@ void DAbstractDialog::moveToCenter()
 }
 
 /*!
+@~english
   \brief DAbstractDialog::moveToTopRight moves the dialog to the top right of the screen or its parent widget.
-  
-  \brief 将对话框移动至屏幕右上角或其父控件的右上角。
  */
 void DAbstractDialog::moveToTopRight()
 {
@@ -265,11 +264,9 @@ void DAbstractDialog::moveToTopRight()
 }
 
 /*!
+@~english
   \brief DAbstractDialog::moveToTopRightByRect moves the dialog to the top right corner of the rect.
   \a rect is the target rect.
-  
-  \brief 移动对话框到给定 \a rect 区域的右上角。
-  \a rect 是移动所需要参照的 QRect 位置。
  */
 void DAbstractDialog::moveToTopRightByRect(const QRect &rect)
 {
@@ -278,11 +275,9 @@ void DAbstractDialog::moveToTopRightByRect(const QRect &rect)
 }
 
 /*!
+@~english
   \brief DAbstractDialog::setDisplayPosition sets the position of the dialog.
   \a displayPosition is the target position.
-  
-  \brief 设置对话框的显示位置。
-  \a displayPosition 要显示到的位置
  */
 void DAbstractDialog::setDisplayPosition(DAbstractDialog::DisplayPosition displayPosition)
 {
@@ -303,9 +298,10 @@ void DAbstractDialog::setDisplayPosition(DAbstractDialog::DisplayPosition displa
 }
 
 /*!
+@~english
   \brief DAbstractDialog::moveToCenterByRect moves the dialog to the center of the rect.
   \a rect is the target rect.
-  
+
   \brief 移动对话框到给定 \a rect 区域的中央。
   \a rect 是移动对话框要参照的 QRect 区域
  */
@@ -326,8 +322,11 @@ void DAbstractDialog::mousePressEvent(QMouseEvent *event)
 
     if (event->button() == Qt::LeftButton) {
         D_D(DAbstractDialog);
-
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         d->dragPosition = event->globalPos() - frameGeometry().topLeft();
+#else
+        d->dragPosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
+#endif
         d->mousePressed = true;
     }
 
@@ -363,14 +362,17 @@ void DAbstractDialog::mouseMoveEvent(QMouseEvent *event)
     }
 
     if (d->mousePressed) {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         move(event->globalPos() - d->dragPosition);
+#else
+        move(event->globalPosition().toPoint() - d->dragPosition);
+#endif
         d->mouseMoved = true;
     }
 
     QDialog::mouseMoveEvent(event);
 }
 
-/*! \reimp */
 void DAbstractDialog::resizeEvent(QResizeEvent *event)
 {
     if (event->size().width() >= maximumWidth()) {

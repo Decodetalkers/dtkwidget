@@ -14,6 +14,8 @@
 
 DWIDGET_BEGIN_NAMESPACE
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
+
 // static const variables
 const QString DShortcutEdit::DefaultTips = tr("Please input a new shortcut");
 
@@ -37,7 +39,7 @@ DShortcutEdit::DShortcutEdit(QWidget *parent)
     layout->addWidget(m_keysEdit);
     layout->addWidget(m_keysLabel);
     layout->setSpacing(0);
-    layout->setMargin(0);
+    layout->setContentsMargins({0,0,0,0});
 
     setLayout(layout);
     setFocusPolicy(Qt::NoFocus);
@@ -50,7 +52,7 @@ DShortcutEdit::DShortcutEdit(QWidget *parent)
     m_keyMapping.insert("PgDown", "PageDown");
     m_keyMapping.insert("PgUp", "PageUp");
 
-    m_blockedShortcutKeys.append(QRegExp("^Backspace$"));
+    m_blockedShortcutKeys.append(QRegularExpression("^Backspace$"));
 
     //connect(this, &DShortcutEdit::invalidShortcutKey, [this] () -> void {m_keysLabel->setEchoState(DShortcutEditLabel::Invalid);});
 }
@@ -101,7 +103,7 @@ void DShortcutEdit::setKeyMapping(const QMap<QString, QString> &mapping)
     m_keyMapping = mapping;
 }
 
-void DShortcutEdit::setBlockShortcutKeysList(const QList<QRegExp> &kList)
+void DShortcutEdit::setBlockShortcutKeysList(const QList<QRegularExpression> &kList)
 {
     m_blockedShortcutKeys = kList;
 }
@@ -121,14 +123,14 @@ const QMap<QString, QString> &DShortcutEdit::getKeyMapping() const
     return std::move(m_keyMapping);
 }
 
-const QList<QRegExp> &DShortcutEdit::getBlockShortcutKeysList() const
+const QList<QRegularExpression> &DShortcutEdit::getBlockShortcutKeysList() const
 {
     return m_blockedShortcutKeys;
 }
 
 bool DShortcutEdit::isValidShortcutKey(const QString &key)
 {
-    for (const QRegExp &k : m_blockedShortcutKeys)
+    for (const auto &k : m_blockedShortcutKeys)
         if (key.contains(k)) {
             return false;
         }
@@ -235,6 +237,7 @@ QString DShortcutEdit::convertShortcutKeys(const QString &keys)
 
     return newKeys;
 }
+#endif
 
 DShortcutEditLabel::DShortcutEditLabel(QWidget *parent)
     : QLabel(parent)

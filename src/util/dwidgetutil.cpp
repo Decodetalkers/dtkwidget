@@ -1,15 +1,17 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "dtkwidget/util/dwidgetutil.h"
-
+#include "dwidgetutil.h"
+#include <QWidget>
 #include <QPixmap>
 #include <QPainter>
 #include <QPainterPath>
 #include <QTextLayout>
 #include <QApplication>
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 #include <QDesktopWidget>
+#endif
 
 QT_BEGIN_NAMESPACE
 //extern Q_WIDGETS_EXPORT void qt_blurImage(QImage &blurImage, qreal radius, bool quality, int transposed = 0);
@@ -58,9 +60,12 @@ QImage dropShadow(const QPixmap &px, qreal radius, const QColor &color)
 void moveToCenter(QWidget *w)
 {
     Q_ASSERT(w != nullptr);
-
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QDesktopWidget *dw = QApplication::desktop();
     QRect parentRect = dw->availableGeometry(dw->primaryScreen());
+#else
+    auto parentRect = QGuiApplication::primaryScreen()->availableGeometry();
+#endif
 
     if (w->parentWidget()) {
         parentRect = w->parentWidget()->geometry();
@@ -90,6 +95,43 @@ QIcon getCircleIcon(const QIcon &icon, int diameter)
 {
     QPixmap pixmap = icon.pixmap(QSize(diameter, diameter));
     return getCircleIcon(pixmap, diameter);
+}
+
+// 取自Qt源码qpixmapfilter.cpp 945行
+void grayScale(const QImage &image, QImage &dest, const QRect &rect)
+{
+    QRect destRect = rect;
+    QRect srcRect = rect;
+    if (rect.isNull()) {
+        srcRect = dest.rect();
+        destRect = dest.rect();
+    }
+    if (&image != &dest) {
+        destRect.moveTo(QPoint(0, 0));
+    }
+
+    const unsigned int *data = reinterpret_cast<const unsigned int *>(image.bits());
+    unsigned int *outData = reinterpret_cast<unsigned int *>(dest.bits());
+
+    if (dest.size() == image.size() && image.rect() == srcRect) {
+        // a bit faster loop for grayscaling everything
+        int pixels = dest.width() * dest.height();
+        for (int i = 0; i < pixels; ++i) {
+            int val = qGray(data[i]);
+            outData[i] = qRgba(val, val, val, qAlpha(data[i]));
+        }
+    } else {
+        int yd = destRect.top();
+        for (int y = srcRect.top(); y <= srcRect.bottom() && y < image.height(); y++) {
+            data = reinterpret_cast<const unsigned int *>(image.scanLine(y));
+            outData = reinterpret_cast<unsigned int *>(dest.scanLine(yd++));
+            int xd = destRect.left();
+            for (int x = srcRect.left(); x <= srcRect.right() && x < image.width(); x++) {
+                int val = qGray(data[x]);
+                outData[xd++] = qRgba(val, val, val, qAlpha(data[x]));
+            }
+        }
+    }
 }
 
 DWIDGET_END_NAMESPACE

@@ -9,9 +9,13 @@
 #include <QFileInfo>
 #include <QtConcurrent>
 #include <QtAlgorithms>
+#include <QPaintEngine>
+#include <DWidgetUtil>
+#include <DIconTheme>
 
 #include <cups/cups.h>
 #include <cups/ppd.h>
+
 
 #define FIRST_PAGE 1
 #define FIRST_INDEX 0
@@ -26,43 +30,8 @@
 #define WATER_DEFAULTFONTSIZE 65
 #define WATER_TEXTSPACE WATER_DEFAULTFONTSIZE
 
+DGUI_USE_NAMESPACE
 DWIDGET_BEGIN_NAMESPACE
-// 取自Qt源码qpixmapfilter.cpp 945行
-static void grayscale(const QImage &image, QImage &dest, const QRect &rect = QRect())
-{
-    QRect destRect = rect;
-    QRect srcRect = rect;
-    if (rect.isNull()) {
-        srcRect = dest.rect();
-        destRect = dest.rect();
-    }
-    if (&image != &dest) {
-        destRect.moveTo(QPoint(0, 0));
-    }
-
-    const unsigned int *data = reinterpret_cast<const unsigned int *>(image.bits());
-    unsigned int *outData = reinterpret_cast<unsigned int *>(dest.bits());
-
-    if (dest.size() == image.size() && image.rect() == srcRect) {
-        // a bit faster loop for grayscaling everything
-        int pixels = dest.width() * dest.height();
-        for (int i = 0; i < pixels; ++i) {
-            int val = qGray(data[i]);
-            outData[i] = qRgba(val, val, val, qAlpha(data[i]));
-        }
-    } else {
-        int yd = destRect.top();
-        for (int y = srcRect.top(); y <= srcRect.bottom() && y < image.height(); y++) {
-            data = reinterpret_cast<const unsigned int *>(image.scanLine(y));
-            outData = reinterpret_cast<unsigned int *>(dest.scanLine(yd++));
-            int xd = destRect.left();
-            for (int x = srcRect.left(); x <= srcRect.right() && x < image.width(); x++) {
-                int val = qGray(data[x]);
-                outData[xd++] = qRgba(val, val, val, qAlpha(data[x]));
-            }
-        }
-    }
-}
 
 static void saveImageToFile(int index, const QString &outPutFileName, const QString &suffix, bool isJpegImage, const QImage &srcImage)
 {
@@ -320,7 +289,7 @@ void DPrintPreviewWidgetPrivate::printAsImage(const QSize &paperSize, QVector<in
     savedImages.fill(Qt::white);
 
     QPainter painter(&savedImages);
-    painter.setClipRect(previewPrinter->pageRect());
+    painter.setClipRect(previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution()));
     painter.scale(scale, scale);
 
     QPointF leftTopPoint;
@@ -418,7 +387,7 @@ void DPrintPreviewWidgetPrivate::printSinglePageDrawUtil(QPainter *painter, cons
     painter->save();
     if (scale > 1) {
         // Bug-61709: Qt原因右下页边距在缩放大于100后出现失效问题，这里先用一个临时的解决办法处理
-        QImage tmpImage(previewPrinter->pageRect().size() * scale, QImage::Format_ARGB32);
+        QImage tmpImage(previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution()).size() * scale, QImage::Format_ARGB32);
         tmpImage.fill(Qt::white);
         QPainter tmpPainter(&tmpImage);
         tmpPainter.scale(scale, scale);
@@ -452,7 +421,7 @@ void DPrintPreviewWidgetPrivate::printMultiPageDrawUtil(QPainter *painter, const
     painter->scale(numberUpPrintData->scaleRatio, numberUpPrintData->scaleRatio);
     if (scale > 1) {
         // Bug-61709: Qt原因右下页边距在缩放大于100后出现失效问题，这里先用一个临时的解决办法处理
-        QImage tmpImage(previewPrinter->pageRect().size() / numberUpPrintData->scaleRatio, QImage::Format_ARGB32);
+        QImage tmpImage(previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution()).size() / numberUpPrintData->scaleRatio, QImage::Format_ARGB32);
         tmpImage.fill(Qt::white);
         QPainter tmpPainter(&tmpImage);
 
@@ -491,7 +460,7 @@ void DPrintPreviewWidgetPrivate::print(bool printAsPicture)
     if (printAsPicture) {
         printAsImage(paperSize, pageVector);
     } else {
-        QRect pageRect = previewPrinter->pageRect();
+        QRect pageRect = previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution());
         QPointF leftTopPoint;
         if (scale >= 1.0) {
             leftTopPoint = {0, 0};
@@ -556,7 +525,7 @@ void DPrintPreviewWidgetPrivate::updatePageByPagePrintVector(QVector<int> &pageV
                 pictures = reservepic;
             }
             //将页码数值按从大到小排序
-            qSort(pageVector.begin(), pageVector.end(), qGreater<int>());
+            std::sort(pageVector.begin(), pageVector.end(), std::greater<int>());
         }
     }
 }
@@ -658,11 +627,14 @@ int DPrintPreviewWidgetPrivate::page2index(int page)
     return pageRange.indexOf(page);
 }
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
+
 void DPrintPreviewWidgetPrivate::impositionPages()
 {
     setCurrentPage(FIRST_PAGE);
     return;
 }
+#endif
 
 int DPrintPreviewWidgetPrivate::impositionPages(DPrintPreviewWidget::Imposition im)
 {
@@ -705,7 +677,7 @@ QImage DPrintPreviewWidgetPrivate::generateWaterMarkImage() const
         {
             if (!numberUpPrintData->waterList.isEmpty()) {
                 WaterMark *wm = numberUpPrintData->waterList.first();
-                wm->setBoundingRect(previewPrinter->pageRect());
+                wm->setBoundingRect(previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution()));
                 wm->setNumberUpScale(1);
                 picPainter.setOpacity(wm->opacity());
                 wm->updatePicture(&picPainter, false);
@@ -720,7 +692,7 @@ QImage DPrintPreviewWidgetPrivate::generateWaterMarkImage() const
     if (imposition == DPrintPreviewWidget::One) {
         return waterMarkImage;
     } else {
-        const QRectF &pageRect = previewPrinter->pageRect();
+        const QRectF &pageRect = previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution());
         qreal rotation = numberUpPrintData->waterList.isEmpty() ? 0 : numberUpPrintData->waterList.first()->rotation();
 
         // 绘制水印
@@ -755,7 +727,7 @@ PrintOptions DPrintPreviewWidgetPrivate::printerOptions()
 {
     PrintOptions options;
 
-    options.append(QPair<QByteArray, QByteArray>(QStringLiteral("media").toLocal8Bit(), QPageSize(QPageSize::PageSizeId(previewPrinter->pageSize())).key().toLocal8Bit()));
+    options.append(QPair<QByteArray, QByteArray>(QStringLiteral("media").toLocal8Bit(), QPageSize(QPageSize::PageSizeId(previewPrinter->pageLayout().pageSize().id())).key().toLocal8Bit()));
     options.append(QPair<QByteArray, QByteArray>(QStringLiteral("copies").toLocal8Bit(), QString::number(previewPrinter->copyCount()).toLocal8Bit()));
     options.append(QPair<QByteArray, QByteArray>(QStringLiteral("fit-to-page").toLocal8Bit(), QStringLiteral("true").toLocal8Bit()));
 
@@ -779,7 +751,7 @@ PrintOptions DPrintPreviewWidgetPrivate::printerOptions()
         options.append(QPair<QByteArray, QByteArray>(QStringLiteral("sides").toLocal8Bit(), QStringLiteral("one-sided").toLocal8Bit()));
         break;
     case QPrinter::DuplexAuto:
-        if (previewPrinter->orientation() == QPrinter::Portrait) {
+        if (previewPrinter->pageLayout().orientation() == QPageLayout::Portrait) {
             options.append(QPair<QByteArray, QByteArray>(QStringLiteral("sides").toLocal8Bit(), QStringLiteral("two-sided-long-edge").toLocal8Bit()));
         } else {
             options.append(QPair<QByteArray, QByteArray>(QStringLiteral("sides").toLocal8Bit(), QStringLiteral("two-sided-short-edge").toLocal8Bit()));
@@ -863,7 +835,7 @@ void DPrintPreviewWidgetPrivate::calculateNumberPageScale()
 {
     numberUpPrintData->resetData();
 
-    QRectF pageRect = previewPrinter->pageRect();
+    QRectF pageRect = previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution());
     switch (imposition) {
     case DPrintPreviewWidget::OneRowTwoCol:
         numberUpPrintData->rowCount = 1;
@@ -1095,7 +1067,7 @@ void DPrintPreviewWidgetPrivate::displayWaterMarkItem()
     }
 
     numberUpPrintData->needRecreateWater = false;
-    QRectF pageRect = previewPrinter->pageRect();
+    QRectF pageRect = previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution());
 
     // 拷贝旧的水印属性，防止水印重新添加后原有水印无法设置到现有内容中
     numberUpPrintData->copyWaterMarkProperties();
@@ -1172,10 +1144,10 @@ void DPrintPreviewWidgetPrivate::updateNumberUpContent()
     // 调整序号坐标显示位置（纸张大小发生改变时）
     QVector<QPointF> paintPoints;
     for (auto &p : qAsConst(numberUpPrintData->paintPoints)) {
-        paintPoints.append(p + QPointF(previewPrinter->pageRect().width() * numberUpPrintData->scaleRatio, 0));
+        paintPoints.append(p + QPointF(previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution()).width() * numberUpPrintData->scaleRatio, 0));
     }
 
-    numberUpPrintData->numberItem->setRect(previewPrinter->pageRect());
+    numberUpPrintData->numberItem->setRect(previewPrinter->pageLayout().paintRectPixels(previewPrinter->resolution()));
     numberUpPrintData->numberItem->setNumberPositon(paintPoints);
     numberUpPrintData->numberItem->setPageNumbers(nVector);
     numberUpPrintData->numberItem->update();
@@ -1275,13 +1247,15 @@ void DPrintPreviewWidget::setPageRangeALL()
 
 /*!
   \brief 设置是否需要重新生成页面内容.
-  
+
   \a generate 是否需要重新生成页面内容
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 void DPrintPreviewWidget::setReGenerate(bool generate)
 {
     reviewChange(generate);
 }
+#endif
 
 /*!
   \brief 设置页面选择范围模式。
@@ -1310,11 +1284,13 @@ DPrintPreviewWidget::PageRange DPrintPreviewWidget::pageRangeMode()
 
   \a generate 预览是否发生改变.
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 void DPrintPreviewWidget::reviewChange(bool generate)
 {
     Q_D(DPrintPreviewWidget);
     d->reviewChanged = generate;
 }
+#endif
 
 /*!
   \brief 设置预览页面范围。
@@ -1423,8 +1399,9 @@ void DPrintPreviewWidget::setColorMode(const DPrinter::ColorMode &colorMode)
 void DPrintPreviewWidget::setOrientation(const DPrinter::Orientation &pageOrientation)
 {
     Q_D(DPrintPreviewWidget);
-
-    d->previewPrinter->setOrientation(pageOrientation);
+    auto layout = d->previewPrinter->pageLayout();
+    layout.setOrientation(static_cast<QPageLayout::Orientation>(pageOrientation));
+    d->previewPrinter->setPageLayout(layout);
     updatePreview();
 }
 
@@ -2230,7 +2207,7 @@ void WaterMark::setImage(const QImage &img)
     type = Image;
     sourceImage = img;
     graySourceImage = img;
-    grayscale(img, graySourceImage, img.rect());
+    DWIDGET_NAMESPACE::grayScale(img, graySourceImage, img.rect());
 }
 
 void WaterMark::paint(QPainter *painter, const QStyleOptionGraphicsItem *item, QWidget *widget)
@@ -2397,7 +2374,7 @@ GraphicsView::GraphicsView(QWidget *parent)
 
     scaleResetButton = new DIconButton(this);
     scaleResetButton->setFixedSize(36, 36);
-    scaleResetButton->setIcon(QIcon::fromTheme("print_previewscale"));
+    scaleResetButton->setIcon(DIconTheme::findQIcon("print_previewscale"));
     scaleResetButton->setIconSize(QSize(18, 18));
     scaleResetButton->setVisible(false);
 

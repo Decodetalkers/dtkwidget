@@ -13,6 +13,8 @@
 #include "dobject_p.h"
 #include "dgraphicsclipeffect.h"
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
+
 DCORE_USE_NAMESPACE
 DWIDGET_BEGIN_NAMESPACE
 
@@ -110,7 +112,7 @@ DSegmentedControl::DSegmentedControl(QWidget *parent)
     D_D(DSegmentedControl);
 
     d->hLayout->setSpacing(1);
-    d->hLayout->setMargin(0);
+    d->hLayout->setContentsMargins(0, 0, 0, 0);
     d->hLayout->setObjectName("TabBar");
     d->highlight->setObjectName("Highlight");
     d->highlight->installEventFilter(this);
@@ -522,3 +524,4 @@ void DSegmentedControl::buttonClicked()
 }
 
 DWIDGET_END_NAMESPACE
+#endif

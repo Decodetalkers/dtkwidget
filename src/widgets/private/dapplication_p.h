@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: 2015 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2015 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #ifndef DAPPLICATION_P_H
 #define DAPPLICATION_P_H
 
+#include "dsizemode.h"
 #include <DObjectPrivate>
-
 #include <DApplication>
 #include <DPathBuf>
 
@@ -16,21 +16,25 @@
 class QLocalServer;
 class QTranslator;
 
-DCORE_USE_NAMESPACE
 DWIDGET_BEGIN_NAMESPACE
+DCORE_USE_NAMESPACE
 
 class DAboutDialog;
+class DFeatureDisplayDialog;
 
 class DApplicationPrivate : public DObjectPrivate
 {
-    D_DECLARE_PUBLIC(DApplication)
 
 public:
+
+    D_DECLARE_PUBLIC(DApplication)
+
     explicit DApplicationPrivate(DApplication *q);
     ~DApplicationPrivate();
-
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
     D_DECL_DEPRECATED QString theme() const;
     D_DECL_DEPRECATED void setTheme(const QString &theme);
+#endif    
 
     bool setSingleInstanceBySemaphore(const QString &key);
 #ifdef Q_OS_UNIX
@@ -38,7 +42,6 @@ public:
 #endif
 
     bool loadDtkTranslator(QList<QLocale> localeFallback);
-    bool loadTranslator(QList<DPathBuf> translateDirs, const QString &name, QList<QLocale> localeFallback);
     void _q_onNewInstanceStarted();
 
     // 为控件适应当前虚拟键盘的位置
@@ -46,6 +49,8 @@ public:
     void acclimatizeVirtualKeyboardForFocusWidget(bool allowResizeContentsMargins);
     void _q_panWindowContentsForVirtualKeyboard();
     void _q_resizeWindowContentsForVirtualKeyboard();
+    void _q_sizeModeChanged();
+    void handleSizeModeChangeEvent(QWidget *widget, QEvent *event);
 
     static bool isUserManualExists();
 public:
@@ -61,6 +66,10 @@ public:
     QString appDescription;
     QString homePage;
     QString acknowledgementPage;
+    QString applicationCreditsFile;
+    QByteArray applicationCreditsContent;
+    QString licensePath;
+
     bool acknowledgementPageVisible = true;
 
     bool visibleMenuShortcutText   = false;
@@ -70,6 +79,8 @@ public:
 
     DAppHandler *appHandler = Q_NULLPTR;
     DAboutDialog *aboutDialog = Q_NULLPTR;
+    DFeatureDisplayDialog *featureDisplayDialog = Q_NULLPTR;
+    DLicenseDialog *licenseDialog = Q_NULLPTR;
 
     // 需要自适应虚拟键盘环境的窗口
     QPointer<QWidget> activeInputWindow;

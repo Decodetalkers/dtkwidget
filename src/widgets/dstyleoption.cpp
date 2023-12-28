@@ -17,7 +17,13 @@
 #include <private/qfont_p.h>
 
 #include <cmath>
-
+QT_BEGIN_NAMESPACE
+#if QT_VERSION < QT_VERSION_CHECK(6, 4, 2)
+extern bool qt_is_gui_used;
+#else
+extern bool qt_is_tty_app;
+#endif
+QT_END_NAMESPACE
 DWIDGET_BEGIN_NAMESPACE
 
 /*!
@@ -102,6 +108,41 @@ void DStyleOption::init(const QWidget *widget)
   \a widget
   \sa Dtk::Widget::DSuggestButton
  */
+DStyleOptionButton::DStyleOptionButton()
+    : QStyleOptionButton ()
+    , DStyleOption ()
+{
+}
+
+/*!
+ * @brief DStyleOptionButton::DStyleOptionButton Custom copy constructor
+ * @param other Source object
+ */
+DStyleOptionButton::DStyleOptionButton(const DStyleOptionButton &other)
+    : QStyleOptionButton (other)
+    , DStyleOption (other)
+{
+    // `dciIcon` broke abi, so we need to distinguish weather `other` has dciIcon.
+    if (other.features & DStyleOptionButton::HasDciIcon)
+        dciIcon = other.dciIcon;
+}
+
+/*!
+ * @brief DStyleOptionButton::operator = Custom assignment constructor
+ * @param other Source obejct
+ * @return
+ */
+DStyleOptionButton &DStyleOptionButton::operator=(const DStyleOptionButton &other)
+{
+    // Set the value of the parent class member variable.
+    this->QStyleOptionButton::operator=(other);
+    this->DStyleOption::operator=(other);
+
+    if (other.features & DStyleOptionButton::HasDciIcon)
+        dciIcon = other.dciIcon;
+    return *this;
+}
+
 void DStyleOptionButton::init(const QWidget *widget)
 {
     DStyleOption::init(widget);
@@ -140,7 +181,7 @@ public:
     }
 
     QList<QWidget*> binderMap[DFontSizeManager::NSizeTypes];
-    quint16 fontPixelSize[DFontSizeManager::NSizeTypes] = {40, 30, 24, 20, 17, 14, 13, 12, 11, 10};
+    quint16 fontPixelSize[DFontSizeManager::NSizeTypes] = {40, 30, 24, 20, 16, 14, 13, 12, 11, 10, 8};
     quint8 fontGenericSizeType = DFontSizeManager::T6;
     // 字号的差值
     quint16 fontPixelSizeDiff = 0;
@@ -314,9 +355,24 @@ const QFont DFontSizeManager::get(DFontSizeManager::SizeType type, int weight, c
     QFont font = base;
 
     font.setPixelSize(fontPixelSize(type));
-    font.setWeight(weight);
+    font.setWeight(static_cast<QFont::Weight>(weight));
 
     return font;
+}
+
+static int d_defaultDpi()
+{
+    if (QCoreApplication::instance()->testAttribute(Qt::AA_Use96Dpi))
+        return 96;
+#if QT_VERSION < QT_VERSION_CHECK(6, 4, 2)
+    if (!qt_is_gui_used)
+#else
+    if (qt_is_tty_app)
+#endif
+        return 75;
+
+    //PI has not been initialised, or it is being initialised. Give a default dpi
+    return 100;
 }
 
 int DFontSizeManager::fontPixelSize(const QFont &font)
@@ -324,7 +380,9 @@ int DFontSizeManager::fontPixelSize(const QFont &font)
     int px = font.pixelSize();
 
     if (px == -1) {
-        px = qRound(std::floor(((font.pointSizeF() * font.d->dpi) / 72) * 100 + 0.5) / 100);
+        // font.d->dpi <= 0 is unacceptable,this fallback is to avoid errors.
+        // TODO: Remove me if invalid font dpi was fixed
+        px = qRound(std::floor(((font.pointSizeF() * (font.d->dpi <= 0 ? d_defaultDpi() : font.d->dpi)) / 72) * 100 + 0.5) / 100);
     }
 
     return px;

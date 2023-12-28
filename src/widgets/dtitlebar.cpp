@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #include "dtitlebar.h"
 
+#include <mutex>
 #include <QDebug>
 #include <QMenu>
 #include <QHBoxLayout>
@@ -11,12 +12,15 @@
 #include <QMouseEvent>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QWidgetAction>
 
 #include <DWindowManagerHelper>
 #include <DObjectPrivate>
 #include <DPlatformTheme>
+#include <DConfig>
 #include <QScreen>
 #include <QWindow>
+#include <QActionGroup>
 #include <qpa/qplatformwindow.h>
 
 #include "dpalettehelper.h"
@@ -32,21 +36,24 @@
 #include "dapplication.h"
 #include "private/dapplication_p.h"
 #include "private/dsplitscreen_p.h"
+#include "private/dmainwindow_p.h"
 #include "dmainwindow.h"
 #include "DHorizontalLine"
 #include "dimagebutton.h"
 #include "dblureffectwidget.h"
 #include "dwidgetstype.h"
 #include "dlabel.h"
+#include "dsizemode.h"
+#include "private/dtitlebarsettingsimpl.h"
+#include "dtitlebarsettings.h"
 
 DWIDGET_BEGIN_NAMESPACE
 
 #define CHANGESPLITWINDOW_VAR "_d_splitWindowOnScreen"
 #define GETSUPPORTSPLITWINDOW_VAR "_d_supportForSplittingWindow"
 
-const int DefaultTitlebarHeight = 50;
-const int DefaultIconHeight = 32;
-const int DefaultIconWidth = 32;
+static inline int DefaultIconHeight() { return DSizeModeHelper::element(24, 32); }
+static inline int DefaultExpandButtonHeight() { return DSizeModeHelper::element(30, 48); }
 
 class DTitlebarPrivate : public DTK_CORE_NAMESPACE::DObjectPrivate
 {
@@ -76,7 +83,8 @@ private:
 #ifndef QT_NO_MENU
     void _q_addDefaultMenuItems();
     void _q_helpActionTriggered();
-    void _q_feedbackActionTriggerd();
+    void _q_feedbackActionTriggered();
+    void _q_toolBarActionTriggered();
     void _q_aboutActionTriggered();
     void _q_quitActionTriggered();
     void _q_switchThemeActionTriggered(QAction*action);
@@ -86,9 +94,31 @@ private:
     void updateTabOrder();
     void showSplitScreenWidget();
     void hideSplitScreenWidget();
-    /*SplitLeft: 1; SplitRight: 2; SplitFullScreen: 15*/
-    void changeWindowSplitedState(quint32 type);
-    bool supportSplitScreenByWM();
+    void updateTitleBarSize()
+    {
+        if (optionButton)
+            optionButton->setIconSize(QSize(titlebarHeight, titlebarHeight));
+        if (minButton)
+            minButton->setIconSize(QSize(titlebarHeight, titlebarHeight));
+        if (maxButton)
+            maxButton->setIconSize(QSize(titlebarHeight, titlebarHeight));
+        if (closeButton)
+            closeButton->setIconSize(QSize(titlebarHeight, titlebarHeight));
+        if (quitFullButton)
+            quitFullButton->setIconSize(QSize(titlebarHeight, titlebarHeight));
+        if (expandButton)
+            expandButton->setIconSize(QSize(DefaultExpandButtonHeight(), DefaultExpandButtonHeight()));
+        if (iconLabel)
+            iconLabel->setIconSize(QSize(DefaultIconHeight(), DefaultIconHeight()));
+
+        D_Q(DTitlebar);
+        q->setFixedHeight(titlebarHeight);
+        q->setMinimumHeight(titlebarHeight);
+    }
+
+    void setFixedButtonsEnabled(bool isEnabled);
+
+    void updateTitlebarHeight();
 
     QHBoxLayout         *mainLayout;
     QWidget             *leftArea;
@@ -111,12 +141,18 @@ private:
     DHorizontalLine     *separator;
 
     DBlurEffectWidget   *blurWidget = nullptr;
-    QPointer<DSplitScreenWidget>  splitWidget = nullptr;
+    QPointer<DSplitScreenWidget> splitWidget = nullptr;
+    DSidebarHelper      *sidebarHelper = nullptr;
+    DIconButton         *expandButton = nullptr;
+
+    int                 titlebarHeight = 50;
+    DConfig             *uiPreferDonfig = nullptr;
 
 #ifndef QT_NO_MENU
     QMenu               *menu             = Q_NULLPTR;
     QAction             *helpAction       = Q_NULLPTR;
     QAction             *feedbackAction   = Q_NULLPTR;
+    QAction             *toolbarAction    = Q_NULLPTR;
     QAction             *aboutAction      = Q_NULLPTR;
     QAction             *quitAction       = Q_NULLPTR;
     bool                canSwitchTheme    = true;
@@ -136,214 +172,11 @@ private:
     bool                fullScreenButtonVisible = true;
     bool                splitScreenWidgetEnable = true;
     QTimer              *maxButtonPressAndHoldTimer = nullptr;
+    QWidget             *sidebarBackgroundWidget = nullptr;
+    DTitlebarSettingsImpl *titlebarSettingsImpl = nullptr;
+    DTitlebarSettings *titlebarSettings = nullptr;
     Q_DECLARE_PUBLIC(DTitlebar)
 };
-
-DSplitScreenButton::DSplitScreenButton(DStyle::StandardPixmap sp, QWidget *parent)
-    : DIconButton(sp, parent)
-{
-    this->setIconSize(QSize(36, 36));
-
-    auto dpal = DPaletteHelper::instance()->palette(this);
-    dpal.setColor(DPalette::FrameBorder, Qt::transparent);
-    DPaletteHelper::instance()->setPalette(this, dpal);
-}
-
-void DSplitScreenButton::initStyleOption(DStyleOptionButton *option) const
-{
-    DIconButton::initStyleOption(option);
-
-    bool hover = (option->state & QStyle::State_MouseOver);
-    bool selected = (option->state & QStyle::State_Sunken);
-
-    if (hover && !selected) {
-        // 调整背景色和图标调色板
-        auto pal = option->palette;
-        auto dpal = DPaletteHelper::instance()->palette(this);
-        QColor backgroundBrush = dpal.itemBackground().color();
-        QColor iconForeColor = Qt::white;
-        if (DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::LightType) {
-            backgroundBrush = DStyle::adjustColor(backgroundBrush, 0, 0, 0, 0, 0, 0, 3);
-            iconForeColor = dpal.brush(DPalette::TextTitle).color();
-
-        }
-
-        pal.setBrush(QPalette::Light, backgroundBrush);
-        pal.setBrush(QPalette::Dark, backgroundBrush);
-        pal.setBrush(QPalette::ButtonText, iconForeColor);
-
-        option->palette = pal;
-    } else if (!hover && !selected) {
-        option->features |= (QStyleOptionButton::Flat | QStyleOptionButton::ButtonFeature(DStyleOptionButton::TitleBarButton));
-    }
-}
-
-DSplitScreenWidget::DSplitScreenWidget(FloatMode mode, QWidget *parent)
-    : DArrowRectangle(ArrowTop, mode, parent)
-    , floatMode(mode)
-{
-    this->init();
-}
-
-void DSplitScreenWidget::hide()
-{
-    if (!hideTimer.isActive())
-        hideTimer.start(300, this);
-}
-
-void DSplitScreenWidget::hideImmediately()
-{
-    close();
-}
-
-void DSplitScreenWidget::updateMaximizeButtonIcon(bool isMaximized)
-{
-    if (isMaximized) {
-        this->maximizeButton->setIcon(DStyle::SP_Title_SS_ShowNormalButton);
-        this->maximizeButton->setToolTip(qApp->translate("DSplitScreenWidget", "Unmaximize"));
-    } else {
-        this->maximizeButton->setIcon(DStyle::SP_Title_SS_ShowMaximizeButton);
-        this->maximizeButton->setToolTip(qApp->translate("DSplitScreenWidget", "Maximize"));
-    }
-}
-
-void DSplitScreenWidget::setButtonsEnable(bool enable)
-{
-    this->maximizeButton->setEnabled(enable);
-    this->leftSplitButton->setEnabled(enable);
-    this->rightSplitButton->setEnabled(enable);
-}
-
-void DSplitScreenWidget::onThemeTypeChanged(DGuiApplicationHelper::ColorType ct)
-{
-    if (ct == DGuiApplicationHelper::DarkType) {
-        this->setBackgroundColor(QColor(25, 25, 25, qRound(0.8 * 255)));
-    } else {
-        this->setBackgroundColor(this->palette().window().color());
-    }
-}
-
-void DSplitScreenWidget::init()
-{
-    this->setAttribute(Qt::WA_DeleteOnClose);
-    this->setWindowFlag(Qt::ToolTip);
-    this->setMargin(10);
-    this->setShadowXOffset(0);
-    this->setShadowYOffset(6);
-    this->setShadowBlurRadius(20);
-    this->setRadius(18);
-    this->setArrowWidth(50);
-    this->setArrowHeight(30);
-    this->setRadiusArrowStyleEnable(true);
-    this->setBorderColor(QColor(0, 0, 0, qRound(0.05 * 255)));
-
-    contentWidget = new QWidget(this);
-    QHBoxLayout *contentLayout = new QHBoxLayout(contentWidget);
-
-    this->leftSplitButton = new DSplitScreenButton(DStyle::SP_Title_SS_LeftButton, this);
-    this->rightSplitButton = new DSplitScreenButton(DStyle::SP_Title_SS_RightButton, this);
-    this->maximizeButton = new DSplitScreenButton(DStyle::SP_Title_SS_ShowNormalButton, this);
-    this->leftSplitButton->setToolTip(qApp->translate("DSplitScreenWidget", "Tile window to left of screen"));
-    this->rightSplitButton->setToolTip(qApp->translate("DSplitScreenWidget", "Tile window to right of screen"));
-
-    contentLayout->setMargin(0);
-    contentLayout->setSpacing(10);
-    contentLayout->addWidget(this->leftSplitButton);
-    contentLayout->addWidget(this->rightSplitButton);
-    contentLayout->addWidget(this->maximizeButton);
-
-    this->setContent(contentWidget);
-    onThemeTypeChanged(DGuiApplicationHelper::instance()->themeType());
-    qApp->installEventFilter(this);
-
-    disabledByScreenGeometryAndWindowSize({leftSplitButton, rightSplitButton});
-
-    QObject::connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, &DSplitScreenWidget::onThemeTypeChanged);
-    QObject::connect(this->leftSplitButton, &DSplitScreenButton::clicked, this, &DSplitScreenWidget::leftSplitScreenButtonClicked);
-    QObject::connect(this->rightSplitButton, &DSplitScreenButton::clicked, this, &DSplitScreenWidget::rightSplitScreenButtonClicked);
-    QObject::connect(this->maximizeButton, &DSplitScreenButton::clicked, this, &DSplitScreenWidget::maximizeButtonClicked);
-}
-
-void DSplitScreenWidget::disabledByScreenGeometryAndWindowSize(QWidgetList wList)
-{
-    QDesktopWidget *desktop = qApp->desktop();
-    QWidget *window = this->window();
-
-    if (Q_LIKELY(desktop) && Q_LIKELY(window)) {
-        QRect screenRect = desktop->screenGeometry(window);
-
-        // 窗口尺寸大于屏幕分辨率时 禁用控件
-        if (screenRect.width() < window->minimumWidth() || screenRect.height() < window->minimumHeight())
-            for (QWidget *w : wList)
-                w->setDisabled(true);
-    }
-}
-
-bool DSplitScreenWidget::eventFilter(QObject *o, QEvent *e)
-{
-    switch (e->type()) {
-    case QEvent::Enter:
-        if (o == this)
-            hideTimer.stop();
-        break;
-
-    case QEvent::Leave:
-        if (o == this)
-            hide();
-        break;
-
-    case QEvent::Close:
-        if (!o->objectName().compare(QLatin1String("qtooltip_label")))
-            break;
-
-        Q_FALLTHROUGH();
-    case QEvent::WindowActivate:
-    case QEvent::WindowDeactivate:
-    case QEvent::FocusIn:
-    case QEvent::FocusOut:
-    case QEvent::MouseButtonDblClick:
-    case QEvent::Wheel:
-        hideImmediately();
-        break;
-    case QEvent::MouseButtonRelease:
-        if (!isMaxButtonPressAndHold) {
-            hideImmediately();
-        }
-        break;
-    default:
-        break;
-    }
-
-    return false;
-}
-
-void DSplitScreenWidget::showEvent(QShowEvent *e)
-{
-    this->setContent(contentWidget);
-    DArrowRectangle::showEvent(e);
-
-    QRect rect = this->rect();
-    qreal delta = this->shadowBlurRadius();
-    int arrowSpacing = (DArrowRectangle::FloatWidget == floatMode) ? this->arrowWidth() / 2 : this->arrowWidth();
-
-    if (DApplication::isDXcbPlatform())
-        rect = rect.marginsRemoved(QMarginsF(delta, (DArrowRectangle::FloatWidget == floatMode) ? 0 : delta,
-                                             delta, delta - this->margin()).toMargins());
-    else
-        rect = rect.marginsRemoved(QMarginsF(delta, 0, delta, (DArrowRectangle::FloatWidget == floatMode)
-                                             ? delta - this->margin() : delta * 2).toMargins());
-
-
-    this->setArrowX(rect.width() / 2 + arrowSpacing);
-}
-
-void DSplitScreenWidget::timerEvent(QTimerEvent *e)
-{
-    if (e->timerId() == hideTimer.timerId()) {
-        hideTimer.stop();
-        hideImmediately();
-    }
-}
 
 DTitlebarPrivate::DTitlebarPrivate(DTitlebar *qq)
     : DObjectPrivate(qq)
@@ -376,6 +209,13 @@ void DTitlebarPrivate::init()
         optionButton = new DWindowOptionButton;
     }
 
+    auto config = new DConfig("org.deepin.dtk.preference", "", q);
+    bool isUpdated = config->value("featureUpdated", false).toBool();
+    DStyle::setRedPointVisible(optionButton, isUpdated);
+
+    uiPreferDonfig = new DConfig("org.deepin.dtk.preference", "", q);
+    updateTitlebarHeight();
+
     separatorTop    = new DHorizontalLine(q);
     separator       = new DHorizontalLine(q);
     titleLabel      = centerArea;
@@ -387,21 +227,16 @@ void DTitlebarPrivate::init()
     optionButton->installEventFilter(q);
 
     optionButton->setObjectName("DTitlebarDWindowOptionButton");
-    optionButton->setIconSize(QSize(DefaultTitlebarHeight, DefaultTitlebarHeight));
     optionButton->setAccessibleName("DTitlebarDWindowOptionButton");
     minButton->setObjectName("DTitlebarDWindowMinButton");
-    minButton->setIconSize(QSize(DefaultTitlebarHeight, DefaultTitlebarHeight));
     minButton->setAccessibleName("DTitlebarDWindowMinButton");
     maxButton->setObjectName("DTitlebarDWindowMaxButton");
-    maxButton->setIconSize(QSize(DefaultTitlebarHeight, DefaultTitlebarHeight));
     maxButton->setAccessibleName("DTitlebarDWindowMaxButton");
     maxButton->setAttribute(Qt::WA_AlwaysShowToolTips);
     closeButton->setObjectName("DTitlebarDWindowCloseButton");
     closeButton->setAccessibleName("DTitlebarDWindowCloseButton");
-    closeButton->setIconSize(QSize(DefaultTitlebarHeight, DefaultTitlebarHeight));
 
 
-    iconLabel->setIconSize(QSize(DefaultIconWidth, DefaultIconHeight));
     iconLabel->setWindowFlags(Qt::WindowTransparentForInput);
     iconLabel->setAttribute( Qt::WA_TransparentForMouseEvents, true);
     iconLabel->setFocusPolicy(Qt::NoFocus);
@@ -438,7 +273,6 @@ void DTitlebarPrivate::init()
         quitFullButton->installEventFilter(q);
         quitFullButton->setObjectName("DTitlebarDWindowQuitFullscreenButton");
         quitFullButton->setAccessibleName("DTitlebarDWindowQuitFullscreenButton");
-        quitFullButton->setIconSize(QSize(DefaultTitlebarHeight, DefaultTitlebarHeight));
         quitFullButton->hide();
         buttonLayout->addWidget(quitFullButton);
     }
@@ -450,7 +284,7 @@ void DTitlebarPrivate::init()
     rightLayout->setContentsMargins(0, 0, 0, 0);
     auto rightAreaLayout = new QHBoxLayout(rightArea);
     rightAreaLayout->setContentsMargins(0, 0, 0, 0);
-    rightAreaLayout->setMargin(0);
+    rightAreaLayout->setContentsMargins(0, 0, 0, 0);
     rightAreaLayout->setSpacing(0);
     rightAreaLayout->addLayout(rightLayout);
     rightAreaLayout->addWidget(buttonArea);
@@ -470,8 +304,6 @@ void DTitlebarPrivate::init()
     mainLayout->addWidget(rightArea, 0, Qt::AlignRight);
 
     q->setLayout(mainLayout);
-    q->setFixedHeight(DefaultTitlebarHeight);
-    q->setMinimumHeight(DefaultTitlebarHeight);
 
     if (!DGuiApplicationHelper::isTabletEnvironment()) {
         q->connect(quitFullButton, &DWindowQuitFullButton::clicked, q, [ = ]() {
@@ -494,6 +326,22 @@ void DTitlebarPrivate::init()
         if (splitWidget && splitWidget->isVisible())
             splitWidget->isMaxButtonPressAndHold = true;
     });
+    if (isUpdated) {
+        q->connect(config, &DConfig::valueChanged, q, [config, this](const QString &key){
+            if (key == "featureUpdated") {
+                auto result = config->value("featureUpdated", false);
+                DStyle::setRedPointVisible(optionButton, result.toBool());
+                optionButton->update();
+                config->deleteLater();
+            }
+        });
+    }
+    q->connect(uiPreferDonfig, &DConfig::valueChanged, q, [this](const QString &key){
+        if (key == "titlebarHeight") {
+            updateTitlebarHeight();
+            updateTitleBarSize();
+        }
+    });
 
     // 默认需要构造一个空的选项菜单
     q->setMenu(new QMenu(q));
@@ -512,6 +360,8 @@ void DTitlebarPrivate::init()
     };
     // fix wayland 下显示了两个应用图标，系统标题栏 和 dtk标题栏 均显示应用图标
     q->setEmbedMode(!(DApplication::isDXcbPlatform()|| noTitlebarEnabled()));
+
+    updateTitleBarSize();
 }
 
 QWidget *DTitlebarPrivate::targetWindow()
@@ -715,9 +565,6 @@ void DTitlebarPrivate::_q_toggleWindowState()
                && (maxButton->isVisible())) {
         parentWindow->showMaximized();
     }
-
-    if (splitWidget)
-        splitWidget->updateMaximizeButtonIcon(parentWindow->isMaximized());
 }
 
 void DTitlebarPrivate::_q_showMinimized()
@@ -755,23 +602,28 @@ void DTitlebarPrivate::_q_onTopWindowMotifHintsChanged(quint32 winId)
 
     updateButtonsState(targetWindow()->windowFlags());
 
-    minButton->setEnabled(functions_hints.testFlag(DWindowManagerHelper::FUNC_MINIMIZE));
-    maxButton->setEnabled(functions_hints.testFlag(DWindowManagerHelper::FUNC_MAXIMIZE)
-                          && functions_hints.testFlag(DWindowManagerHelper::FUNC_RESIZE));
-    if (!qgetenv("WAYLAND_DISPLAY").isEmpty()) {
-        closeButton->setEnabled(!disableFlags.testFlag(Qt::WindowCloseButtonHint));
+    bool enableMin = functions_hints.testFlag(DWindowManagerHelper::FUNC_MINIMIZE);
+    bool enableMax = functions_hints.testFlag(DWindowManagerHelper::FUNC_MAXIMIZE) && functions_hints.testFlag(DWindowManagerHelper::FUNC_RESIZE);
+    bool enableClose;
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+        enableClose = !disableFlags.testFlag(Qt::WindowCloseButtonHint);
     } else {
-        closeButton->setEnabled(functions_hints.testFlag(DWindowManagerHelper::FUNC_CLOSE));
+        enableClose = functions_hints.testFlag(DWindowManagerHelper::FUNC_CLOSE);
+    }
+    if(q->window()->isEnabled()) {
+        minButton->setEnabled(enableMin);
+        maxButton->setEnabled(enableMax);
+        closeButton->setEnabled(enableClose);
     }
     // sync button state
 #if QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
-    disableFlags.setFlag(Qt::WindowMinimizeButtonHint, !minButton->isEnabled());
-    disableFlags.setFlag(Qt::WindowMaximizeButtonHint, !maxButton->isEnabled());
-    disableFlags.setFlag(Qt::WindowCloseButtonHint, !closeButton->isEnabled());
+    disableFlags.setFlag(Qt::WindowMinimizeButtonHint, !enableMin);
+    disableFlags.setFlag(Qt::WindowMaximizeButtonHint, !enableMax);
+    disableFlags.setFlag(Qt::WindowCloseButtonHint, !enableClose);
 #else
-    setWindowFlag(disableFlags, Qt::WindowMinimizeButtonHint, !minButton->isEnabled());
-    setWindowFlag(disableFlags, Qt::WindowMaximizeButtonHint, !maxButton->isEnabled());
-    setWindowFlag(disableFlags, Qt::WindowCloseButtonHint, !closeButton->isEnabled());
+    setWindowFlag(disableFlags, Qt::WindowMinimizeButtonHint, !enableMin);
+    setWindowFlag(disableFlags, Qt::WindowMaximizeButtonHint, !enableMax);
+    setWindowFlag(disableFlags, Qt::WindowCloseButtonHint, !enableClose);
 #endif
 }
 
@@ -800,6 +652,7 @@ void DTitlebarPrivate::_q_addDefaultMenuItems()
             group->addAction(lightThemeAction);
             group->addAction(darkThemeAction);
 
+
             QObject::connect(group, SIGNAL(triggered(QAction*)),
                              q, SLOT(_q_switchThemeActionTriggered(QAction*)));
 
@@ -814,6 +667,10 @@ void DTitlebarPrivate::_q_addDefaultMenuItems()
 
     // add help menu item.
     if (!helpAction) {
+        // init DGuiApplicationHelperPrivate::hasManual
+        static std::once_flag onceFlag;
+        std::call_once(onceFlag, DApplicationPrivate::isUserManualExists);
+
         helpAction = new QAction(qApp->translate("TitleBarMenu", "Help"), menu);
         QObject::connect(helpAction, SIGNAL(triggered(bool)), q, SLOT(_q_helpActionTriggered()));
         menu->addAction(helpAction);
@@ -823,8 +680,16 @@ void DTitlebarPrivate::_q_addDefaultMenuItems()
     // add feedback menu item for deepin or uos application
     if (!feedbackAction && qApp->organizationName() == "deepin" && !QStandardPaths::findExecutable("deepin-feedback").isEmpty()) {
         feedbackAction = new QAction(qApp->translate("TitleBarMenu", "Feedback"), menu);
-        QObject::connect(feedbackAction, SIGNAL(triggered(bool)), q, SLOT(_q_feedbackActionTriggerd()));
+        QObject::connect(feedbackAction, SIGNAL(triggered(bool)), q, SLOT(_q_feedbackActionTriggered()));
         menu->addAction(feedbackAction);
+    }
+
+    // add toolbarAction menu item for deepin or uos application
+    if (titlebarSettingsImpl && titlebarSettingsImpl->isValid() && !toolbarAction) {
+        toolbarAction = new QAction(qApp->translate("TitleBarMenu", "Custom toolbar"), menu);
+        toolbarAction->setObjectName("TitlebarSettings");
+        QObject::connect(toolbarAction, SIGNAL(triggered(bool)), q, SLOT(_q_toolBarActionTriggered()));
+        menu->addAction(toolbarAction);
     }
 
     // add about menu item.
@@ -852,8 +717,27 @@ void DTitlebarPrivate::_q_helpActionTriggered()
     }
 }
 
-void DTitlebarPrivate::_q_feedbackActionTriggerd() {
+void DTitlebarPrivate::_q_feedbackActionTriggered() {
     QProcess::startDetached("deepin-feedback", { qApp->applicationName() });
+}
+
+void DTitlebarPrivate::_q_toolBarActionTriggered()
+{
+    D_Q(DTitlebar);
+
+    auto toolBarEditPanel = titlebarSettingsImpl->toolsEditPanel();
+    if (toolBarEditPanel->minimumWidth() >= q->width()) {
+        toolBarEditPanel->setParent(nullptr);
+        int x = q->mapToGlobal(q->pos()).x() - (toolBarEditPanel->width()- q->width()) / 2 ;
+        toolBarEditPanel->move(x, q->mapToGlobal(q->pos()).y() + q->height());
+    } else {
+        toolBarEditPanel->setParent(q->parentWidget());
+        toolBarEditPanel->move(0, q->height());
+        toolBarEditPanel->resize(q->width(), q->parentWidget()->height() * 70 / 100);
+    }
+    toolBarEditPanel->installEventFilter(q);
+
+    titlebarSettingsImpl->showEditPanel();
 }
 
 void DTitlebarPrivate::_q_aboutActionTriggered()
@@ -952,25 +836,15 @@ void DTitlebarPrivate::showSplitScreenWidget()
     }
 
     // 窗管不支持分屏时，不显示分屏菜单
-    if (!Q_LIKELY(supportSplitScreenByWM()))
+    if (!Q_LIKELY(DSplitScreenWidget::supportSplitScreenByWM(q->window())))
         return;
 
     if (!splitWidget) {
-        splitWidget = new DSplitScreenWidget(DSplitScreenWidget::FloatWidget, q->window());
-
-        QObject::connect(splitWidget, &DSplitScreenWidget::maximizeButtonClicked, q,
-                         std::bind(&DTitlebarPrivate::changeWindowSplitedState, this, DSplitScreenWidget::SplitFullScreen));
-        QObject::connect(splitWidget, &DSplitScreenWidget::leftSplitScreenButtonClicked, q,
-                         std::bind(&DTitlebarPrivate::changeWindowSplitedState, this, DSplitScreenWidget::SplitLeftHalf));
-        QObject::connect(splitWidget, &DSplitScreenWidget::rightSplitScreenButtonClicked, q,
-                         std::bind(&DTitlebarPrivate::changeWindowSplitedState, this, DSplitScreenWidget::SplitRightHalf));
+        splitWidget = new DSplitScreenWidget(q->window());
     }
 
     if (splitWidget->isVisible())
         return;
-
-    if (auto window = targetWindow())
-        splitWidget->updateMaximizeButtonIcon(window->isMaximized());
 
     auto centerPos = maxButton->mapToGlobal(maxButton->rect().center());
     auto bottomPos = maxButton->mapToGlobal(maxButton->rect().bottomLeft());
@@ -983,11 +857,9 @@ void DTitlebarPrivate::showSplitScreenWidget()
     }
 
     if (bottomPos.y() + splitWidget->height() > rect.height()) {
-        splitWidget->setArrowDirection(DArrowRectangle::ArrowBottom);
-        splitWidget->show(centerPos.x() - splitWidget->arrowWidth() / 2, bottomPos.y() - maxButton->rect().height());
+        splitWidget->show(QPoint(centerPos.x() - splitWidget->width() / 2, bottomPos.y() - maxButton->rect().height() - splitWidget->height()));
     } else {
-        splitWidget->setArrowDirection(DArrowRectangle::ArrowTop);
-        splitWidget->show(centerPos.x() - splitWidget->arrowWidth() / 2, bottomPos.y());
+        splitWidget->show(QPoint(centerPos.x() - splitWidget->width() / 2, bottomPos.y()));
     }
 }
 
@@ -1002,72 +874,37 @@ void DTitlebarPrivate::hideSplitScreenWidget()
     splitWidget->hide();
 }
 
-void DTitlebarPrivate::changeWindowSplitedState(quint32 type)
-{
-    if (splitWidget && splitWidget->isVisible()) {
-        splitWidget->isMaxButtonPressAndHold = false;
-        splitWidget->hideImmediately();
-    }
-    D_Q(DTitlebar);
-    QFunctionPointer splitWindowOnScreen = Q_NULLPTR;
-
-    //### 目前接口尚不公开在 dtkgui 中，等待获取后续接口稳定再做移植
-    splitWindowOnScreen = qApp->platformFunction(CHANGESPLITWINDOW_VAR);
-
-    const QWindow *windowHandle = nullptr;
-    const QWidget *window = q->window();
-
-    if (window)
-        windowHandle  = window->windowHandle();
-
-    if (splitWindowOnScreen && windowHandle && windowHandle->handle())
-        reinterpret_cast<void(*)(quint32, quint32)>(splitWindowOnScreen)(windowHandle->handle()->winId(), type);
-}
-
-bool DTitlebarPrivate::supportSplitScreenByWM()
-{
-    //### 目前接口尚不公开在 dtkgui 中，等待获取后续接口稳定再做移植
-    D_Q(DTitlebar);
-    QFunctionPointer getSupportSplitWindow = Q_NULLPTR;
-    bool supported = false;
-
-    getSupportSplitWindow = qApp->platformFunction(GETSUPPORTSPLITWINDOW_VAR);
-
-    const QWindow *windowHandle = nullptr;
-    const QWidget *window = q->window();
-
-    if (window)
-        windowHandle  = window->windowHandle();
-
-    if (getSupportSplitWindow && windowHandle && windowHandle->handle())
-        supported = reinterpret_cast<bool(*)(quint32)>(getSupportSplitWindow)(windowHandle->handle()->winId());
-
-    return supported;
-}
-
 #endif
 
+void DTitlebarPrivate::setFixedButtonsEnabled(bool isEnabled)
+{
+    maxButton->setEnabled(isEnabled);
+    minButton->setEnabled(isEnabled);
+    closeButton->setEnabled(isEnabled);
+    optionButton->setEnabled(isEnabled);
+}
+
+void DTitlebarPrivate::updateTitlebarHeight()
+{
+    titlebarHeight = uiPreferDonfig->value("titlebarHeight").toInt();
+    // 配置项默认值是-1，从配置读取进来的值超出0-100的范围，通过模式获取值，否则使用获取的配置值
+    if (titlebarHeight <= 0 || titlebarHeight > 100)
+        titlebarHeight = DSizeModeHelper::element(40, 50);
+}
+
 /*!
+  @~english
   \class Dtk::Widget::DTitlebar
   \inmodule dtkwidget
-
-  \brief The DTitlebar class is an universal title bar on the top of windows.
-  \brief Dtitlebar是Dtk程序通用的标题栏组件，用于实现标题栏的高度定制化.
-
-  \a parent is the parent widget to be attached on.
-  \a 父组件，一般为标题栏所在的窗口
-  
-  Usually you don't need to construct a DTitlebar instance by your self, you
+  \brief The DTitlebar class is an universal title bar on the top of windows.Usually you don't need to construct a DTitlebar instance by your self, you
   can get an DTitlebar instance by DMainWindow::titlebar .
-  一般情况下，请使用Dtk::Widget::DMainWindow::titlebar()来获取已经自动初始化的标题栏，
-  不要自己来创建这个标题栏。
+  \param[in] parent is the parent widget to be attached on.
  */
 
 /*!
+  @~english
   \brief This function provides to create an default widget with icon/title/ and buttons
-  \brief 创建一个DTitlebar对象，包含默认的窗口按钮.
-
-  \a parent 父控件指针
+  \param[in] parent 父控件指针
  */
 DTitlebar::DTitlebar(QWidget *parent) :
     QFrame(parent),
@@ -1088,11 +925,8 @@ DTitlebar::DTitlebar(QWidget *parent) :
 
 #ifndef QT_NO_MENU
 /*!
+  @~english
   \brief DTitlebar::menu holds the QMenu object attached to this title bar.
-  \brief 获取和标题栏关联的应用查询菜单.
-
-  \return 如该标题栏没有设置菜单，这里会返回空，但是如该使用 Dtk::Widget::DApplication ,
-  那么这里一般会自动创建一个程序菜单。
   \return the QMenu object it holds, returns null if there's no one set.
  */
 QMenu *DTitlebar::menu() const
@@ -1103,11 +937,9 @@ QMenu *DTitlebar::menu() const
 }
 
 /*!
+  @~english
   \brief DTitlebar::setMenu attaches a QMenu object to the title bar.
-  \brief 设置自定义的程序菜单.
-
-  \a menu is the target menu.
-  \a menu 需要被设置的菜单
+  \param[in] menu is the target menu.
  */
 void DTitlebar::setMenu(QMenu *menu)
 {
@@ -1133,16 +965,10 @@ void DTitlebar::setMenu(QMenu *menu)
 #endif
 
 /*!
-  \brief DTitlebar::customWidget
-  \brief 标题栏绑定的自定义控件
-  
+  @~english
+  \brief DTitlebar::customWidget, One can set customized widget to show some extra widgets on the title bar.
   \return the customized widget used in this title bar.
-  \return 自定义控件
-  
-  One can set customized widget to show some extra widgets on the title bar.
-  可以通过自定义控件来在标题栏上显示复杂的组合控件
-  
-  \sa Dtk::Widget::DTitlebar::setCustomWidget()
+  \param[in] Dtk::Widget::DTitlebar::setCustomWidget()
  */
 QWidget *DTitlebar::customWidget() const
 {
@@ -1153,19 +979,15 @@ QWidget *DTitlebar::customWidget() const
 
 #ifndef QT_NO_MENU
 /*!
+  @~english
   \brief DTitlebar::showMenu pop the menu of application on titlebar.
-  \brief 弹出应用程序菜单
  */
 void DTitlebar::showMenu()
 {
     D_D(DTitlebar);
 
-#ifndef QT_NO_MENU
-    // 默认菜单应该是showmenu之前添加, 而非showevent
-    d->_q_addDefaultMenuItems();
-#endif
-     if (d->helpAction)
-         d->helpAction->setVisible(DApplicationPrivate::isUserManualExists());
+    if (d->helpAction)
+        d->helpAction->setVisible(DApplicationPrivate::isUserManualExists());
 
     if (d->menu) {
         // 更新主题选中的项
@@ -1187,6 +1009,10 @@ void DTitlebar::showMenu()
             action->setChecked(true);
         }
 
+        DConfig config("org.deepin.dtk.preference");
+        bool isUpdated = config.value("featureUpdated", false).toBool();
+        DStyle::setRedPointVisible(d->aboutAction, isUpdated);
+
         d->menu->exec(d->optionButton->mapToGlobal(d->optionButton->rect().bottomLeft()));
         d->optionButton->update(); // FIX: bug-25253 sometimes optionButton not udpate after menu exec(but why?)
     }
@@ -1207,7 +1033,13 @@ void DTitlebar::showEvent(QShowEvent *event)
     d->separatorTop->setFixedWidth(width());
     d->separatorTop->move(0, 0);
     d->separator->setFixedWidth(width());
-    d->separator->move(0, height() - d->separator->height());
+    int x = (d->sidebarHelper && d->sidebarHelper->expanded()) ? d->sidebarHelper->width() : 0;
+    d->separator->move(x, height() - d->separator->height());
+
+#ifndef QT_NO_MENU
+    // 默认菜单需要在showevent添加，否则`menu`接口返回空actions，导致接口逻辑不兼容
+    d->_q_addDefaultMenuItems();
+#endif
 
     QWidget::showEvent(event);
 
@@ -1311,6 +1143,13 @@ bool DTitlebar::eventFilter(QObject *obj, QEvent *event)
 
         }
     }
+    if (d->titlebarSettings && d->titlebarSettingsImpl->hasEditPanel() && obj == d->titlebarSettingsImpl->toolsEditPanel()) {
+        if (event->type() == QEvent::Show) {
+            d->setFixedButtonsEnabled(false);
+        } else if ((event->type() == QEvent::Close)) {
+            d->setFixedButtonsEnabled(true);
+        }
+    }
     return QWidget::eventFilter(obj, event);
 }
 
@@ -1329,6 +1168,10 @@ bool DTitlebar::event(QEvent *e)
             // 还需要 Tab 切换焦点时不不会出现再自己身上减少一次按 Tab 键 fix bug-65703
             fe->reason() == Qt::TabFocusReason ? focusNextChild() : focusPreviousChild();
         }
+    } else if (e->type() == QEvent::StyleChange) {
+        D_D(DTitlebar);
+        d->updateTitlebarHeight();
+        d->updateTitleBarSize();
     }
 
     return QFrame::event(e);
@@ -1341,26 +1184,41 @@ void DTitlebar::resizeEvent(QResizeEvent *event)
 
     d->separatorTop->setFixedWidth(event->size().width());
     d->separator->setFixedWidth(event->size().width());
+    int x = (d->sidebarHelper && d->sidebarHelper->expanded()) ? d->sidebarHelper->width() : 0;
+    d->separator->move(x, height() - d->separator->height());
     d->updateCenterArea();
 
     if (d->blurWidget) {
         d->blurWidget->resize(event->size());
     }
 
+    if (d->sidebarBackgroundWidget)
+        d->sidebarBackgroundWidget->setFixedHeight(event->size().height());
+
+    if (d->titlebarSettingsImpl && d->titlebarSettingsImpl->hasEditPanel() && d->titlebarSettingsImpl->toolsEditPanel()->isVisible()) {
+        if (d->titlebarSettingsImpl->toolsEditPanel()->minimumWidth() >= this->width()) {
+            d->titlebarSettingsImpl->toolsEditPanel()->setWindowFlag(Qt::Dialog);
+            d->titlebarSettingsImpl->toolsEditPanel()->show();
+            int x = this->mapToGlobal(this->pos()).x() - (d->titlebarSettingsImpl->toolsEditPanel()->width()- this->width()) / 2 ;
+            d->titlebarSettingsImpl->toolsEditPanel()->move(x, this->mapToGlobal(this->pos()).y() + this->height());
+        } else {
+            d->titlebarSettingsImpl->toolsEditPanel()->setWindowFlag(Qt::Dialog, false);
+            d->titlebarSettingsImpl->toolsEditPanel()->show();
+            d->titlebarSettingsImpl->toolsEditPanel()->move(0, this->height());
+            d->titlebarSettingsImpl->toolsEditPanel()->resize(width(), parentWidget()->height() * 70 / 100);
+        }
+    }
+
     return QWidget::resizeEvent(event);
 }
 
 /*!
+  @~english
   \brief DTitlebar::setCustomWidget is an overloaded function.
-  \brief 设置标题栏上的自定义控件.
-
-  \a w is the widget to be used as the customize widget shown in the title
+  \param[in] w is the widget to be used as the customize widget shown in the title
   bar.
-  \a fixCenterPos indicates whether it should automatically move the
+  \param[in] fixCenterPos indicates whether it should automatically move the
   customize widget to the horizontal center of the title bar or not.
-
-  \a w 需要显示的控件。
-  \a fixCenterPos 是否需要自动修正控件位置，用于保持控件居中显示。
  */
 void DTitlebar::setCustomWidget(QWidget *w, bool fixCenterPos)
 {
@@ -1402,6 +1260,50 @@ void DTitlebar::setCustomWidget(QWidget *w, bool fixCenterPos)
     }
 }
 
+void DTitlebar::setSidebarHelper(DSidebarHelper *helper)
+{
+    D_D(DTitlebar);
+    if (d->sidebarHelper == helper)
+        return;
+
+    d->sidebarHelper = helper;
+
+    if (!d->expandButton) {
+        d->expandButton = new DIconButton(this);
+        d->expandButton->setIcon(DDciIcon::fromTheme("window_sidebar"));
+        d->expandButton->setIconSize(QSize(DefaultExpandButtonHeight(), DefaultExpandButtonHeight()));
+        d->expandButton->setCheckable(true);
+        d->expandButton->setChecked(true);
+        d->expandButton->setFlat(true);
+
+        d->sidebarBackgroundWidget = new QWidget(this);
+        d->sidebarBackgroundWidget->setAccessibleName("SidebarBackgroundWidget");
+        d->sidebarBackgroundWidget->setAutoFillBackground(true);
+        d->sidebarBackgroundWidget->setBackgroundRole(DPalette::Button);
+        d->sidebarBackgroundWidget->move(pos());
+        d->sidebarBackgroundWidget->lower();
+        d->leftLayout->addWidget(d->expandButton, 0, Qt::AlignLeft);
+        connect(d->expandButton, &DIconButton::clicked, [this, d] (bool isExpanded) {
+            d->sidebarHelper->setExpanded(isExpanded);
+            int x = isExpanded ? d->sidebarHelper->width() : 0;
+            d->separator->move(x, height() - d->separator->height());
+        });
+    }
+
+    connect(helper, &DSidebarHelper::visibleChanged, this, [this](bool visible){
+        d_func()->expandButton->setVisible(visible);
+        d_func()->sidebarBackgroundWidget->setVisible(d_func()->sidebarHelper->sectionVisible());
+    });
+    connect(helper, &DSidebarHelper::expandChanged, this, [this](bool isExpanded){
+        d_func()->sidebarBackgroundWidget->setVisible(isExpanded);
+        d_func()->expandButton->setChecked(isExpanded);
+    });
+    connect(helper, &DSidebarHelper::widthChanged, this, [this](int width){
+        d_func()->sidebarBackgroundWidget->setFixedWidth(width);
+    });
+
+}
+
 void DTitlebar::addWidget(QWidget *w, Qt::Alignment alignment)
 {
     D_D(DTitlebar);
@@ -1439,12 +1341,10 @@ void DTitlebar::removeWidget(QWidget *w)
 }
 
 /*!
+  @~english
   \brief DTitlebar::setFixedHeight change the height of the title bar to
   another value.
-  \brief 设置标题栏的高度，默认高度为 50。
-
-  \a h 需要设置的高度
-  \a h is the target height.
+  \param[in] h is the target height.
  */
 void DTitlebar::setFixedHeight(int h)
 {
@@ -1452,11 +1352,9 @@ void DTitlebar::setFixedHeight(int h)
 }
 
 /*!
+  @~english
   \brief DTitlebar::setBackgroundTransparent set the title background transparent
-  \brief 设置标题栏背景是否透明，当为透明时标题栏直接叠加在下层控件上.
-
-  \a transparent is the targeting value.
-  \a transparent 是否透明
+  \param[in] transparent is the targeting value.
  */
 void DTitlebar::setBackgroundTransparent(bool transparent)
 {
@@ -1469,12 +1367,10 @@ void DTitlebar::setBackgroundTransparent(bool transparent)
 }
 
 /*!
+  @~english
   \brief DTitlebar::setSeparatorVisible sets the bottom separator of the title
   bar and the window contents to be visible or not.
-  \brief 设置菜单下面的分隔线是否可见，默认是可见的。
-
-  \a visible 是否可见
-  \a visible is the targeting value.
+  \param[in] visible is the targeting value.
  */
 void DTitlebar::setSeparatorVisible(bool visible)
 {
@@ -1488,11 +1384,9 @@ void DTitlebar::setSeparatorVisible(bool visible)
 }
 
 /*!
+  @~english
   \brief DTitlebar::setTitle sets the title to be shown on the title bar.
-  \brief 设置标题栏文本。
-
-  \a title is the text to be used as the window title.
-  \a title 待设置内容
+  \param[in] title is the text to be used as the window title.
  */
 void DTitlebar::setTitle(const QString &title)
 {
@@ -1506,11 +1400,9 @@ void DTitlebar::setTitle(const QString &title)
 }
 
 /*!
+  @~english
   \brief DTitlebar::setIcon sets the icon to be shown on the title bar.
-  \brief 设置标题栏图标
-
   \a icon is to be used as the window icon.
-  \a icon 待设置的图标
  */
 void DTitlebar::setIcon(const QIcon &icon)
 {
@@ -1555,9 +1447,9 @@ void DTitlebar::setBlurBackground(bool blurBackground)
 }
 
 /*!
+  @~english
   \brief DTitlebar::buttonAreaWidth returns the width of the area that all the
   window buttons occupies.
-  \brief 按钮区域大小，用于手动定位自定义控件时使用.
  */
 int DTitlebar::buttonAreaWidth() const
 {
@@ -1566,9 +1458,9 @@ int DTitlebar::buttonAreaWidth() const
 }
 
 /*!
+  @~english
   \brief DTitlebar::separatorVisible returns the visibility of the bottom
   separator of the titlebar.
-  \brief 分隔线是否可见.
  */
 bool DTitlebar::separatorVisible() const
 {
@@ -1577,9 +1469,9 @@ bool DTitlebar::separatorVisible() const
 }
 
 /*!
+  @~english
   \brief DTitlebar::autoHideOnFullscreen returns if titlebar show on fullscreen mode.
   separator of the titlebar.
-  \brief 全屏模式下标题栏是否自动隐藏.
  */
 bool DTitlebar::autoHideOnFullscreen() const
 {
@@ -1588,9 +1480,9 @@ bool DTitlebar::autoHideOnFullscreen() const
 }
 
 /*!
+  @~english
   \brief DTitlebar::setAutoHideOnFullscreen set if titlebar show when window is fullscreen state.
-  \brief 设置全屏模式下是否需要自动隐藏标题栏
-  \a autohide 是否自动隐藏
+  \param[in] autohide Whether to hide automatically
  */
 void DTitlebar::setAutoHideOnFullscreen(bool autohide)
 {
@@ -1629,10 +1521,9 @@ void DTitlebar::setVisible(bool visible)
 }
 
 /*!
+  @~english
   \brief This function provides to set a titlebar is in parent.
-  \brief 设置为嵌入模式，而不是替换系统标题栏，用于不支持dxcb的平台.
-
-  \a visible 为 true 时，替换系统标题栏，否则隐藏系统标题栏。
+  \param[in] while visible is true ，Replace the system title bar, otherwise the system title bar is hidden.
  */
 void DTitlebar::setEmbedMode(bool visible)
 {
@@ -1643,9 +1534,9 @@ void DTitlebar::setEmbedMode(bool visible)
 }
 
 /*!
-  \brief 菜单按钮的可视化.
-
-  \return true 菜单可见 false菜单不可见.
+  @~english
+  \brief Visualization of the menu button.
+  \return true The menu is visible, false Menu is not visible.
  */
 bool DTitlebar::menuIsVisible() const
 {
@@ -1654,9 +1545,9 @@ bool DTitlebar::menuIsVisible() const
 }
 
 /*!
-  \brief 设置菜单是否可见.
-
-  \a visible true 菜单可见 false菜单不可见.
+  @~english
+  \brief set the menu whether it is visible.
+  \param[in] visible true The menu is visible, falseThe menu is not visible.
  */
 void DTitlebar::setMenuVisible(bool visible)
 {
@@ -1665,9 +1556,9 @@ void DTitlebar::setMenuVisible(bool visible)
 }
 
 /*!
-  \brief 菜单是否被禁用.
-
-  \return true 菜单被禁用 false 菜单没有被禁用。
+  @~english
+  \brief Whether the menu is disabled.
+  \return true: Menu is disabled, false: The menu is not disabled
  */
 bool DTitlebar::menuIsDisabled() const
 {
@@ -1676,9 +1567,9 @@ bool DTitlebar::menuIsDisabled() const
 }
 
 /*!
-  \brief 设置菜单是否被禁用.
-
-  \a disabled true 菜单被禁用 false菜单没有被禁用。
+  @~english
+  \brief set the menu whether it is disabled.
+  \param[in] disabled true： Menu is disabled, false： The menu is not disabled
  */
 void DTitlebar::setMenuDisabled(bool disabled)
 {
@@ -1687,9 +1578,9 @@ void DTitlebar::setMenuDisabled(bool disabled)
 }
 
 /*!
-  \brief 退出菜单是否被禁用.
-
-  \return true 退出菜单被禁用 false退出菜单没有被禁用
+  @~english
+  \brief Whether the withdrawal menu is disabled.
+  \return true Exit menu is disabled false The exit menu is not disabled
  */
 bool DTitlebar::quitMenuIsDisabled() const
 {
@@ -1699,9 +1590,9 @@ bool DTitlebar::quitMenuIsDisabled() const
 }
 
 /*!
-  \brief 设置退出菜单是否被禁用.
-
-  \a disabled true 退出菜单被禁用 false退出菜单没有被禁用
+  @~english
+  \brief Set the exit menu whether it is disabled.
+  \param[in] disabled true Exit menu is disabled, false The exit menu is not disabled
  */
 void DTitlebar::setQuitMenuDisabled(bool disabled)
 {
@@ -1715,9 +1606,9 @@ void DTitlebar::setQuitMenuDisabled(bool disabled)
 }
 
 /*!
-  \brief 设置退出菜单是否可见.
-
-  \a visible true 退出菜单可见 false退出菜单不可见
+  @~english
+  \brief Set the exit menu whether it is visible.
+  \a visible true exit the menu visible, false exit the menu is not visible
  */
 void DTitlebar::setQuitMenuVisible(bool visible)
 {
@@ -1731,9 +1622,9 @@ void DTitlebar::setQuitMenuVisible(bool visible)
 }
 
 /*!
-  \brief 设置主题切换菜单的可视化.
-
-  \return true 切换主题菜单可见 false切换主题菜单不可见
+  @~english
+  \brief Set the visualization of the theme switch menu.
+  \return true Switch theme menu can be seen, false switch theme menu is not visible
  */
 bool DTitlebar::switchThemeMenuIsVisible() const
 {
@@ -1743,9 +1634,9 @@ bool DTitlebar::switchThemeMenuIsVisible() const
 }
 
 /*!
-  \brief 设置切换主题菜单是否可见.
-
-  \a visible true 切换主题菜单可见 false 切换主题菜单不可见。
+  @~english
+  \brief Set the theme menu whether it is visible.
+  \param[in] visible true Switch theme menu can be seen, false Switch theme menu is not visible
  */
 void DTitlebar::setSwitchThemeMenuVisible(bool visible)
 {
@@ -1764,10 +1655,9 @@ void DTitlebar::setSwitchThemeMenuVisible(bool visible)
 }
 
 /*!
+  @~english
   \brief This function provides to disable the button match flags.
-  \brief 设置需要被禁用的按钮，仅仅是在界面上禁用按钮，还是可以通过事件等机制来调用对应接口.
-
-  \a flags 需要被禁用的按钮标志位
+  \param[in] flags the banned buttons that need to be disabled
  */
 void DTitlebar::setDisableFlags(Qt::WindowFlags flags)
 {
@@ -1777,10 +1667,9 @@ void DTitlebar::setDisableFlags(Qt::WindowFlags flags)
 }
 
 /*!
+  @~english
   \brief Return which button is disabled.
-  \brief 当前被禁用的按钮标志位.
-
-  \return 被禁用的窗口标志。
+  \return The disabled window logo
  */
 Qt::WindowFlags DTitlebar::disableFlags() const
 {
@@ -1811,7 +1700,7 @@ QSize DTitlebar::sizeHint() const
     int padding = qMax(d->leftArea->sizeHint().width(), d->rightArea->sizeHint().width());
     int width = d->centerArea->sizeHint().width() + 2 * d->mainLayout->spacing() + 2 * padding;
 
-    return QSize(width, DefaultTitlebarHeight);
+    return QSize(width, d->titlebarHeight);
 }
 
 QSize DTitlebar::minimumSizeHint() const
@@ -1829,6 +1718,18 @@ void DTitlebar::setFullScreenButtonVisible(bool visible)
 {
     D_D(DTitlebar);
     d->fullScreenButtonVisible = visible;
+}
+
+DTitlebarSettings *DTitlebar::settings()
+{
+    D_D(DTitlebar);
+
+    if (!d->titlebarSettings) {
+        auto settings = new DTitlebarSettings(this);
+        d->titlebarSettingsImpl = settings->impl();
+        d->titlebarSettings = settings;
+    }
+    return d->titlebarSettings;
 }
 
 void DTitlebar::mouseMoveEvent(QMouseEvent *event)

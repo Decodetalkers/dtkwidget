@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <DLineEdit>
 #include <DApplicationHelper>
+#include <DPaletteHelper>
 
 #include "dstyleoption.h"
 DWIDGET_USE_NAMESPACE
@@ -95,6 +96,11 @@ TEST_F(ut_DFontSizeManager, t9)
     ASSERT_EQ(target->t9().pixelSize(), target->fontPixelSize(DFontSizeManager::T9));
 };
 
+TEST_F(ut_DFontSizeManager, t11)
+{
+    ASSERT_EQ(target->t11().pixelSize(), target->fontPixelSize(DFontSizeManager::T11));
+};
+
 class ut_DStyleOptionBackgroundGroup : public testing::Test
 {
 protected:
@@ -116,7 +122,7 @@ TEST_F(ut_DStyleOptionBackgroundGroup, init)
 {
     QWidget *widget = new QWidget();
     target->init(widget);
-    ASSERT_EQ(target->palette, DApplicationHelper::instance()->palette(widget));
+    ASSERT_EQ(target->palette, DPaletteHelper::instance()->palette(widget));
     widget->deleteLater();
 };
 

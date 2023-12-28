@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
@@ -7,6 +7,7 @@
 #include "dstyleoption.h"
 #include "dpalettehelper.h"
 #include "dstyle.h"
+#include "dsizemode.h"
 
 #include "dlistview.h"
 
@@ -19,6 +20,7 @@
 #include <QLineEdit>
 #include <QTableView>
 #include <QListWidget>
+#include <QPointer>
 #include <private/qlayoutengine_p.h>
 #include <DGuiApplicationHelper>
 #include <DDciIcon>
@@ -96,10 +98,12 @@ static void loadDViewItemActionList(QDataStream &s, void *d)
 __attribute__((constructor))
 static void registerMetaType ()
 {
+    #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     // register DViewItemActionList's stream operator to support that QMetaType can using save and load function.
     QMetaType::registerStreamOperators(QMetaTypeId<DTK_WIDGET_NAMESPACE::ActionList>::qt_metatype_id(),
                                        saveDViewItemActionList,
                                        loadDViewItemActionList);
+    #endif
 }
 
 static DViewItemActionList qvariantToActionList(const QVariant &v)
@@ -131,8 +135,8 @@ public:
     QSize maxSize;
     QMargins clickMargins;
     bool clickable = false;
-    QWidget *widget = nullptr;
     DDciIcon dciIcon;
+    QPointer<QWidget> widget = nullptr;
 
     qint8 colorType = -1;
     qint8 colorRole = -1;
@@ -191,6 +195,25 @@ public:
         item.decorationSize = option.decorationSize;
 
         return DStyle::viewItemSize(style, &item, Qt::DisplayRole);
+    }
+
+    // get rect in AlignVCenter layout for text.
+    static QRect textAndTextActionsLayout(const QRect &textRect, const QStyle *style, const QStyleOptionViewItem &option, const QModelIndex &index)
+    {
+        QStyleOptionViewItem opt = option;
+        opt.displayAlignment |= Qt::AlignVCenter;
+        QSize size;
+
+        if (!opt.text.isEmpty())
+            size = DStyle::viewItemSize(style, &opt, Qt::DisplayRole);
+
+        for (const DViewItemAction *action : qvariantToActionList(index.data(Dtk::TextActionListRole))) {
+            const QSize &action_size = displayActionSize(action, style, opt);
+            size.setWidth(qMax(size.width(), action_size.width()));
+            size.setHeight(size.height() + action_size.height());
+        }
+
+        return QStyle::alignedRect(opt.direction , opt.displayAlignment, size, textRect);
     }
 
     static QList<QRect> doActionsLayout(QRect base, const DViewItemActionList &list, Qt::Orientation orientation,
@@ -431,12 +454,78 @@ public:
         return bounding;
     }
 
+    static DViewItemActionList allActions(const QModelIndex &index)
+    {
+        static const QVector<ItemDataRole> rules {
+            LeftActionListRole,
+                    TopActionListRole,
+                    RightActionListRole,
+                    BottomActionListRole,
+                    TextActionListRole
+        };
+        DViewItemActionList results;
+        for (const auto role: rules) {
+            const auto &list = qvariantToActionList(index.data(role));
+            if (list.isEmpty())
+                continue;
+            results << list;
+        }
+        return results;
+    }
+
+    bool readyRecordVisibleWidgetOfCurrentFrame()
+    {
+        // multi QEvent maybe be merged to one using postEvent
+        // so we can clear cache avoid to recording multi ItemWidget.
+        if (Q_UNLIKELY(hasStartRecord)) {
+            currentWidgets.clear();
+            return false;
+        }
+        hasStartRecord = true;
+        return true;
+    }
+
+    void updateWidgetVisibleInUnvisualArea()
+    {
+        hasStartRecord = false;
+        if (lastWidgets.isEmpty() && currentWidgets.isEmpty())
+            return;
+
+        for (const auto &widget : qAsConst(lastWidgets)) {
+            if (currentWidgets.contains(widget))
+                continue;
+            if (widget && widget->isVisible())
+                widget->setVisible(false);
+        }
+
+        lastWidgets.swap(currentWidgets);
+        currentWidgets.clear();
+    }
+
+    void recordVisibleWidgetOfCurrentFrame(const QModelIndex &index)
+    {
+        // only record virsual widget when starting record.
+        if (Q_UNLIKELY(!hasStartRecord))
+            return;
+
+        for (auto action : allActions(index)) {
+            if (!action->isVisible())
+                continue;
+
+            if (auto widget = action->widget())
+                currentWidgets.append(QPointer<QWidget>(widget));
+        }
+    }
+
     DStyledItemDelegate::BackgroundType backgroundType = DStyledItemDelegate::NoBackground;
     QMargins margins;
     QSize itemSize;
     int itemSpacing = 0;
     QMap<QModelIndex, QList<QPair<QAction*, QRect>>> clickableActionMap;
     QAction *pressedAction = nullptr;
+    QList<QPointer<QWidget>> lastWidgets;
+    QList<QPointer<QWidget>> currentWidgets;
+    bool hasStartRecord = false;
 };
 
 /*!
@@ -572,6 +661,7 @@ DViewItemAction::DViewItemAction(Qt::Alignment alignment, const QSize &iconSize,
     d->clickable = clickable;
 }
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 DViewItemAction::DViewItemAction(Qt::Alignment alignment, const QSize &iconSize,
                                  const QSize &maxSize, bool clickable, QObject *parent)
     : DViewItemAction(alignment, iconSize, maxSize, clickable)
@@ -580,6 +670,7 @@ DViewItemAction::DViewItemAction(Qt::Alignment alignment, const QSize &iconSize,
         qWarning() << "setting parent for a DViewItemAction object is no longer supported.";
     }
 }
+#endif
 
 /*!
   \brief 获取 DViewItemAction 放置的(水平)位置
@@ -731,7 +822,7 @@ void DViewItemAction::setWidget(QWidget *widget)
 {
     D_D(DViewItemAction);
 
-    d->widget = widget;
+    d->widget = QPointer<QWidget>(widget);
     d->widget->setVisible(false);
 }
 
@@ -947,7 +1038,12 @@ void DStyledItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &o
             opt.displayAlignment &= ~Qt::AlignVCenter;
             opt.displayAlignment &= ~Qt::AlignBottom;
 
-            QRect bounding = DStyle::viewItemDrawText(style, painter, &opt, textRect);
+            QRect textRectbounding = d->textAndTextActionsLayout(textRect, style, opt, index);
+
+            QRect bounding(textRectbounding.topLeft(), QSize());
+            if (!opt.text.isEmpty()) {
+                bounding = DStyle::viewItemDrawText(style, painter, &opt, textRectbounding);
+            }
 
             // draw action text
             for (const DViewItemAction *action : text_action_list) {
@@ -988,7 +1084,7 @@ void DStyledItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &o
             break;
         }
 
-        style->drawPrimitive(QStyle::PE_IndicatorViewItemCheck, &option, painter, widget);
+        style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &option, painter, widget);
     }
 
     // reset rect for focus rect
@@ -1006,6 +1102,8 @@ void DStyledItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &o
                                               ? QPalette::Highlight : QPalette::Window);
         style->drawPrimitive(QStyle::PE_FrameFocusRect, &o, painter, widget);
     }
+
+    const_cast<DStyledItemDelegatePrivate*>(d)->recordVisibleWidgetOfCurrentFrame(index);
 }
 
 QSize DStyledItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
@@ -1177,7 +1275,8 @@ void DStyledItemDelegate::setBackgroundType(DStyledItemDelegate::BackgroundType 
         }
 
         int frame_margin = style->pixelMetric(static_cast<QStyle::PixelMetric>(DStyle::PM_FrameRadius));
-        d->margins += frame_margin;
+        int left_right_margin = style->pixelMetric(static_cast<QStyle::PixelMetric>(DStyle::PM_ContentsMargins));
+        d->margins += QMargins(left_right_margin, frame_margin, left_right_margin, frame_margin);
     }
 }
 
@@ -1325,6 +1424,41 @@ bool DStyledItemDelegate::eventFilter(QObject *object, QEvent *event)
     }
     default:
         break;
+    }
+    const auto view = qobject_cast<QAbstractItemView*>(parent());
+    if (event->type() == QEvent::StyleChange && view) {
+        D_D(DStyledItemDelegate);
+        do {
+            if (d->margins.isNull())
+                break;
+
+            int frame_margin = DStyle::pixelMetric(view->style(), DStyle::PM_FrameRadius);
+            int left_right_margin = DStyle::pixelMetric(view->style(), DStyle::PM_ContentsMargins);
+            d->margins = QMargins(left_right_margin, frame_margin, left_right_margin, frame_margin);
+
+            // relayout to calculate size.
+            view->doItemsLayout();
+        } while (false);
+    }
+    if (view && object == view->viewport()) {
+        static const QEvent::Type UpdateWidgetVisibleEvent(
+                    static_cast<QEvent::Type>(QEvent::registerEventType()));
+
+        if (event->type() == QEvent::Paint) {
+            D_D(DStyledItemDelegate);
+            const QPaintEvent *pe = static_cast<QPaintEvent *>(event);
+            // We only hide widgets when updating all area, it maybe also to be paint when hover,
+            // and it's area is a specific part.
+            if (pe->rect() == view->viewport()->rect() &&
+                d->readyRecordVisibleWidgetOfCurrentFrame()) {
+                auto updateEvent = new QEvent(UpdateWidgetVisibleEvent);
+                qApp->postEvent(view->viewport(), updateEvent);
+            }
+        } else if (event->type() == UpdateWidgetVisibleEvent) {
+            D_D(DStyledItemDelegate);
+            d->updateWidgetVisibleInUnvisualArea();
+            return true;
+        }
     }
 
     return QStyledItemDelegate::eventFilter(object, event);

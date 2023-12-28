@@ -1,9 +1,11 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "dtkwidget/util/dthumbnailprovider.h"
+#include "dthumbnailprovider.h"
 #include <DObjectPrivate>
+
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -183,7 +185,7 @@ QString DThumbnailProvider::thumbnailFilePath(const QFileInfo &info, Size size) 
 
     QImage image(thumbnail);
 
-    if (image.text(QT_STRINGIFY(Thumb::MTime)).toInt() != (int)info.lastModified().toTime_t())
+    if (image.text(QT_STRINGIFY(Thumb::MTime)).toInt() != (int)info.lastModified().toSecsSinceEpoch())
     {
         QFile::remove(thumbnail);
 
@@ -230,7 +232,7 @@ QString DThumbnailProvider::createThumbnail(const QFileInfo &info, DThumbnailPro
     {
         QImage image(thumbnail);
 
-        if (image.text(QT_STRINGIFY(Thumb::MTime)).toInt() != (int)info.lastModified().toTime_t())
+        if (image.text(QT_STRINGIFY(Thumb::MTime)).toInt() != (int)info.lastModified().toSecsSinceEpoch())
         {
             QFile::remove(thumbnail);
         }
@@ -287,7 +289,7 @@ QString DThumbnailProvider::createThumbnail(const QFileInfo &info, DThumbnailPro
     }
 
     image->setText(QT_STRINGIFY(Thumb::URL), fileUrl);
-    image->setText(QT_STRINGIFY(Thumb::MTime), QString::number(info.lastModified().toTime_t()));
+    image->setText(QT_STRINGIFY(Thumb::MTime), QString::number(info.lastModified().toSecsSinceEpoch()));
 
     // create path
     QFileInfo(thumbnail).absoluteDir().mkpath(".");
@@ -439,3 +441,5 @@ void DThumbnailProvider::run()
 }
 
 DWIDGET_END_NAMESPACE
+
+#endif

@@ -1,8 +1,10 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "dtkwidget/util/dtrashmanager.h"
+#include "dtrashmanager.h"
+
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 
 #include <DObjectPrivate>
 
@@ -141,3 +143,5 @@ DTrashManager::DTrashManager()
 }
 
 DWIDGET_END_NAMESPACE
+
+#endif

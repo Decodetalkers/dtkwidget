@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2022 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #include "DApplication"
 #include "dkeysequenceedit.h"
 #include "dstyle.h"
+#include "dsizemode.h"
 
 #include "private/dkeysequenceedit_p.h"
 
@@ -158,6 +159,15 @@ protected:
                 setKeyVisible(false);
         }
     }
+    void changeEvent(QEvent *event) override
+    {
+        if (event->type() == QEvent::StyleChange) {
+            for (auto item : labelList) {
+                item->setMinimumHeight(DSizeModeHelper::element(18, 24));
+            }
+        }
+        return QWidget::changeEvent(event);
+    }
 };
 
 /*!
@@ -195,7 +205,7 @@ bool DKeySequenceEdit::setKeySequence(const QKeySequence &keySequence)
     D_D(DKeySequenceEdit);
     QString writing = getKeySequence(keySequence);
     QStringList keyText;
-    keyText << writing.split("+", QString::SkipEmptyParts);
+    keyText << writing.split("+", Qt::SkipEmptyParts);
 
     if (writing.contains("++")) {
         keyText << "+";
@@ -320,7 +330,7 @@ void DKeySequenceEditPrivate::init()
     rightWidget = new DKeyWidget(q);
 
     rightWidget->setAccessibleName("DKeySequenceEditKeyWidget");
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
     layout->addWidget(rightWidget, 0, Qt::AlignRight);
@@ -345,7 +355,7 @@ void DKeyWidget::setKeyName(const QStringList &keyList)
     for (QString key : keyList) {
         DKeyLabel *label = new DKeyLabel(key);
         label->setAccessibleName(QString("DKeyWidgetKeyLabelAt").append(key));
-        label->setMinimumHeight(24);
+        label->setMinimumHeight(DSizeModeHelper::element(18, 24));
         layout()->addWidget(label);
         labelList.append(label);
     }

@@ -7,6 +7,8 @@
 #include "dthememanager.h"
 #include "private/dimagebutton_p.h"
 
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
+
 #include <QMouseEvent>
 #include <QEvent>
 #include <QIcon>
@@ -170,7 +172,11 @@ DImageButton::~DImageButton()
 {
 }
 
+#if QT_VERSION > QT_VERSION_CHECK(6, 0, 0)
+void DImageButton::enterEvent(QEnterEvent *event)
+#else
 void DImageButton::enterEvent(QEvent *event)
+#endif
 {
     D_D(DImageButton);
 
@@ -728,3 +734,5 @@ QPixmap DImageButtonPrivate::loadPixmap(const QString &path)
 }
 
 DWIDGET_END_NAMESPACE
+
+#endif

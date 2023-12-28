@@ -135,10 +135,12 @@ static inline QString tr(const QByteArray &translateContext, const char *sourceT
   \return 生成的水平布局配置项控件
   \sa Dtk::Widget::DSettingsWidgetFactory::createTwoColumWidget(const QByteArray &translateContext, Dtk::Core::DSettingsOption *option, QWidget *rightWidget)
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 QWidget *DSettingsWidgetFactory::createTwoColumWidget(DTK_CORE_NAMESPACE::DSettingsOption *option, QWidget *rightWidget)
 {
     return createTwoColumWidget(QByteArray(), option, rightWidget);
 }
+#endif
 
 /*!
   \brief DSettingsWidgetFactory::createTwoColumWidget 返回一个水平布局的控件，
@@ -150,6 +152,7 @@ QWidget *DSettingsWidgetFactory::createTwoColumWidget(DTK_CORE_NAMESPACE::DSetti
   \return 生成的水平布局配置项控件
   \sa Dtk::Widget::DSettingsWidgetFactory::createTwoColumWidget(Dtk::Core::DSettingsOption *option, QWidget *rightWidget)
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 QWidget *DSettingsWidgetFactory::createTwoColumWidget(const QByteArray &translateContext, DTK_CORE_NAMESPACE::DSettingsOption *option, QWidget *rightWidget)
 {
     auto optionFrame = new QWidget;
@@ -171,6 +174,7 @@ QWidget *DSettingsWidgetFactory::createTwoColumWidget(const QByteArray &translat
 
     return  optionFrame;
 }
+#endif
 
 QPair<QWidget *, QWidget *> DSettingsWidgetFactory::createStandardItem(const QByteArray &translateContext, Core::DSettingsOption *option, QWidget *rightWidget)
 {
@@ -361,10 +365,18 @@ QPair<QWidget *, QWidget *> createComboBoxOptionHandle(QObject *opt)
         }
 
         rightWidget->clear();
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         if (data.type() == QVariant::StringList) {
+#else
+        if (data.typeId() == QMetaType::Type::QStringList) {
+#endif
             initComboxList(data.toStringList());
         }
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         if (data.type() == QVariant::Map) {
+#else
+        if (data.typeId() == QMetaType::Type::QVariantMap) {
+#endif
             initComboxMap(data.toMap());
         }
         rightWidget->update();
@@ -387,7 +399,7 @@ QPair<QWidget *, QWidget *> createButtonGroupOptionHandle(QObject *opt)
 
     auto option = qobject_cast<DTK_CORE_NAMESPACE::DSettingsOption *>(opt);
     auto items = option->data("items").toStringList();
-    for (const auto item : items) {
+    for (const auto &item : items) {
         auto btn = new DButtonBoxButton(item);
         btnList.append(btn);
     }

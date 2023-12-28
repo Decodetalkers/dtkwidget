@@ -1,64 +1,32 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required(VERSION 3.13)
 
-set (DVERSION "5.6.0.2" CACHE STRING "define project version")
-project (DtkWidget
-  VERSION ${DVERSION}
-  DESCRIPTION "DTK Widget module"
-  HOMEPAGE_URL "https://github.com/linuxdeepin/dtkwidget"
-  LANGUAGES CXX C
+set(DTK_VERSION
+    "5.6.12"
+    CACHE STRING "define project version"
 )
-#set(BREAKVERSION "5")
-include(GNUInstallDirs)
-# set project name
-#message(${CMAKE_INSTALL_LIBDIR})
-set (BUILD_PLUGINS ON CACHE BOOL "BUILD PLUGIN EXAMPLES")
 
-if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+project(DtkWidget
+    VERSION ${DTK_VERSION}
+    DESCRIPTION "DTK Widget module"
+    HOMEPAGE_URL "https://github.com/linuxdeepin/dtkwidget"
+    LANGUAGES CXX C
+)
+
+# Set install path
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX /usr)
-endif ()
-set (MKSPECS_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qt5/mkspecs/modules" CACHE STRING "INSTALL DIR FOR qt pri files")
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wall -Wextra")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--as-needed")
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -fsanitize=address -fno-omit-frame-pointer")
-  set(BUILD_TESTING ON)
-else ()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast")
-endif ()
-
-
-add_subdirectory(src)
-
-add_subdirectory(examples)
-add_subdirectory(tools)
-
-if(BUILD_TESTING)
-  message("==================================")
-  message("       Now Testing is enabled     ")
-  message("==================================")
-  enable_testing()
-  add_subdirectory(tests)
 endif()
-if(BUILD_PLUGINS)
-  message("===================================")
-  message(" You can build and run plugins now ")
-  message("===================================")
-  add_subdirectory(plugin)
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+if("${PROJECT_VERSION_MAJOR}" STREQUAL "5")
+    set(QT_VERSION_MAJOR 5)
+    include(dtkwidget.cmake)
+elseif("${PROJECT_VERSION_MAJOR}" STREQUAL "6")
+    set(QT_VERSION_MAJOR "6")
+    set(DTK_VERSION_MAJOR "6")
+    include(dtkwidget.cmake)
+else()
+    message(SEND_ERROR "not support Prject Version ${PROJECT_VERSION}.")
 endif()
-find_package (Qt5 CONFIG REQUIRED COMPONENTS DBus Xml)
-
-set (BUILD_DOCS ON CACHE BOOL "Generate doxygen-based documentation")
-
-if (BUILD_DOCS)
-  add_subdirectory(docs)
-endif ()
-
-configure_file(misc/DtkWidgetConfig.cmake.in DtkWidgetConfig.cmake @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/DtkWidgetConfig.cmake DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DtkWidget/")
-
-configure_file(misc/dtkwidget.pc.in dtkwidget.pc @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/dtkwidget.pc DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-
-configure_file(misc/qt_lib_dtkwidget.pri.in qt_lib_dtkwidget.pri @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qt_lib_dtkwidget.pri DESTINATION "${MKSPECS_INSTALL_DIR}")

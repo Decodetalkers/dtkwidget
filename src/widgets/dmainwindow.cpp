@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
@@ -7,7 +7,10 @@
 #include "dapplication.h"
 #include "dtitlebar.h"
 #include "dmessagemanager.h"
-
+#include "DBlurEffectWidget"
+#include "dsizemode.h"
+#include "dfeaturedisplaydialog.h"
+#include "denhancedwidget.h"
 #include "private/dmainwindow_p.h"
 #include "private/dapplication_p.h"
 
@@ -16,6 +19,12 @@
 #include <QWindow>
 #include <QMouseEvent>
 #include <QComboBox>
+#include <QToolBar>
+#include <QVBoxLayout>
+#include <qwidgetaction.h>
+#include <QScreen>
+
+#include <DConfig>
 
 #ifdef Q_OS_MAC
 #include "osxwindow.h"
@@ -118,11 +127,21 @@ void DMainWindowPrivate::updateTitleShadowGeometry()
     if (!titleShadow)
         return;
 
-    QRect rect(0, titlebar->geometry().bottom() + 1, q->width(), titleShadow->sizeHint().height());
+    int x = (sidebarHelper && sidebarHelper->expanded()) ? sidebarHelper->width() : 0;
+    QRect rect(x, titlebar->geometry().bottom() + 1, q->width(), titleShadow->sizeHint().height());
     titleShadow->setGeometry(rect);
     // 全凭时会隐藏窗口标题栏，因此不应该显示标题栏的阴影
     titleShadow->setVisible(!q->isFullScreen());
     titleShadow->raise();
+}
+
+void DMainWindowPrivate::_q_autoShowFeatureDialog()
+{
+    D_QC(DMainWindow);
+    if (q->windowHandle()->isActive()) {
+        qApp->featureDisplayDialog()->show();
+        q->disconnect(q->windowHandle(), SIGNAL(activeChanged()), q, SLOT(_q_autoShowFeatureDialog()));
+    }
 }
 
 /*!
@@ -152,6 +171,18 @@ DMainWindow::DMainWindow(QWidget *parent)
     if (DGuiApplicationHelper::isTabletEnvironment()) {
         setWindowFlags(windowFlags() & ~(Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint));
     }
+    DConfig config("org.deepin.dtk.preference");
+    bool isAutoDisplayFeature = config.value("autoDisplayFeature", false).toBool();
+    if (isAutoDisplayFeature) {
+        connect(this->windowHandle(), SIGNAL(activeChanged()), this, SLOT(_q_autoShowFeatureDialog()));
+        config.setValue("autoDisplayFeature", false);
+    }
+
+    D_D(DMainWindow);
+    DEnhancedWidget *hanceedWidget = new DEnhancedWidget(d->titlebar, parent);
+    connect(hanceedWidget, &DEnhancedWidget::heightChanged, hanceedWidget, [d]() {
+        d->updateTitleShadowGeometry();
+    });
 }
 
 /*!
@@ -163,6 +194,102 @@ DTitlebar *DMainWindow::titlebar() const
     D_DC(DMainWindow);
 
     return d->titlebar;
+}
+
+void DMainWindow::setSidebarWidget(QWidget *widget)
+{
+    D_D(DMainWindow);
+    if (d->sidebarWidget == widget)
+        return;
+
+    d->sidebarWidget = widget;
+    d->sidebarWidget->setAutoFillBackground(true);
+    d->sidebarWidget->setBackgroundRole(DPalette::Button);
+    if (!d->sidebarHelper) {
+        d->sidebarHelper = new DSidebarHelper(this);
+        d->titlebar->setSidebarHelper(d->sidebarHelper);
+        QToolBar *tb = new QToolBar(this);
+        tb->setMovable(false);
+        tb->setForegroundRole(QPalette::Base);
+        auto *contentAction = tb->toggleViewAction();
+        contentAction->setVisible(false);
+        addToolBar(Qt::LeftToolBarArea, tb);
+        widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        tb->addWidget(widget);
+        widget->resize(tb->size());
+
+        connect(d->sidebarHelper, &DSidebarHelper::widthChanged, tb, &QToolBar::setFixedWidth);
+        connect(d->sidebarHelper, &DSidebarHelper::expandChanged, this, [tb, d] (bool expanded) {
+            tb->setVisible(expanded);
+            d->updateTitleShadowGeometry();
+        });
+        connect(d->sidebarHelper, &DSidebarHelper::visibleChanged, tb, [tb, d] {
+            tb->setVisible(d->sidebarHelper->sectionVisible());
+            d->updateTitleShadowGeometry();
+        });
+
+        d->tb = tb;
+        d->sidebarHelper->setVisible(true);
+    }
+
+}
+
+QWidget *DMainWindow::sidebarWidget()
+{
+    D_DC(DMainWindow);
+    return d->sidebarWidget;
+}
+
+int DMainWindow::sidebarWidth() const
+{
+    D_DC(DMainWindow);
+    if (d->sidebarHelper)
+        return d->sidebarHelper->width();
+    return 0;
+}
+
+void DMainWindow::setSidebarWidth(int width)
+{
+    D_D(DMainWindow);
+    if (d->sidebarHelper)
+        d->sidebarHelper->setWidth(width);
+}
+
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
+bool DMainWindow::sidebarVisble() const
+{
+    return sidebarVisible();
+}
+#endif
+
+bool DMainWindow::sidebarVisible() const
+{
+    D_DC(DMainWindow);
+    if (d->sidebarHelper)
+        return d->sidebarHelper->visible();
+    return false;
+}
+
+void DMainWindow::setSidebarVisible(bool visible)
+{
+    D_D(DMainWindow);
+    if (d->sidebarHelper)
+        d->sidebarHelper->setVisible(visible);
+}
+
+bool DMainWindow::sidebarExpanded() const
+{
+    D_DC(DMainWindow);
+    if (d->sidebarHelper)
+        return d->sidebarHelper->expanded();
+    return false;
+}
+
+void DMainWindow::setSidebarExpanded(bool expended)
+{
+    D_D(DMainWindow);
+    if (d->sidebarHelper)
+        d->sidebarHelper->setExpanded(expended);
 }
 
 /*!
@@ -589,7 +716,7 @@ void DMainWindow::setEnableSystemMove(bool enableSystemMove)
 
 /*!
   \brief DMainWindow::setEnableBlurWindow　设置窗口模糊效果
-  \~shinese 开启此功能请设置setAttribute(Qt::WA_TranslucentBackground)
+  \~chinese 开启此功能请设置setAttribute(Qt::WA_TranslucentBackground)
   \a enableBlurWindow true开启模糊效果　false关闭模糊效果
  */
 void DMainWindow::setEnableBlurWindow(bool enableBlurWindow)
@@ -689,12 +816,16 @@ void DMainWindow::resizeEvent(QResizeEvent *event)
 
     d->updateTitleShadowGeometry();
 
+    if (sidebarWidget()) {
+        sidebarWidget()->resize(d->tb->size());
+    }
     return QMainWindow::resizeEvent(event);
 }
 
 void DMainWindow::changeEvent(QEvent *event)
 {
-    if (event->type() == QEvent::WindowStateChange) {
+    if (event->type() == QEvent::WindowStateChange ||
+            event->type() == QEvent::StyleChange) {
         D_D(DMainWindow);
         d->updateTitleShadowGeometry();
     }
@@ -703,3 +834,5 @@ void DMainWindow::changeEvent(QEvent *event)
 }
 
 DWIDGET_END_NAMESPACE
+
+#include "moc_dmainwindow.cpp"

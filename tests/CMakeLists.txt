@@ -1,194 +1,191 @@
-#cmake_minimum_required(VERSION 3.5)
+set(BINNAME "ut-${LIBNAME}")
 
-set(BIN_NAME "ut-${PROJECT_NAME}")
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-set(CMAKE_CXX_FLAGS "-fno-access-control")
-add_compile_options(-fsanitize=address)
-add_link_options(-fsanitize=address)
-
-add_definitions(-DSN_API_NOT_YET_FROZEN)
-add_definitions(-DDTK_NO_MULTIMEDIA)
-#TrainslateDir
-add_definitions(-DDWIDGET_TRANSLATIONS_DIR="libdtk-${CMAKE_PROJECT_VERSION}/DWidget/translate")
-
-
-find_package(DtkGui REQUIRED)
-find_package(DtkCore REQUIRED)
-#find_package(DtkWidget REQUIRED)
-
-find_package(Qt5 REQUIRED COMPONENTS Core)
-find_package(Qt5 REQUIRED COMPONENTS Test)
-find_package(Qt5 REQUIRED COMPONENTS Network)
-find_package(Qt5 REQUIRED COMPONENTS Concurrent)
-find_package(Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt5 REQUIRED COMPONENTS PrintSupport)
-#find_package(Qt5 REQUIRED COMPONENTS Multimedia)
-find_package(Qt5 COMPONENTS X11Extras)
-find_package(Qt5 COMPONENTS DBus)
-
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
 find_package(GTest REQUIRED)
-find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(QGSettings REQUIRED gsettings-qt)
-pkg_check_modules(XCBUTIL REQUIRED xcb-util) 
-pkg_check_modules(STARUPNOTIFICATION REQUIRED libstartup-notification-1.0)
-pkg_check_modules(XEXT REQUIRED xext)
-pkg_check_modules(XI REQUIRED xi)
-pkg_check_modules(X11 REQUIRED x11)
+if("${QT_VERSION_MAJOR}" STREQUAL "5")
+    pkg_check_modules(QGSettings REQUIRED IMPORTED_TARGET gsettings-qt) #Dtk6 removed.
+endif()
 
+pkg_check_modules(XcbUtil REQUIRED IMPORTED_TARGET xcb-util)
+pkg_check_modules(StartupNotification REQUIRED IMPORTED_TARGET libstartup-notification-1.0)
+pkg_check_modules(Xext REQUIRED IMPORTED_TARGET xext)
+pkg_check_modules(Xi REQUIRED IMPORTED_TARGET xi)
+pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
 
 set(WIDGET_TEST 
-  testcases/widgets/ut_daboutdialog.cpp
-  testcases/widgets/ut_dabstractdialog.cpp
-  testcases/widgets/ut_dalertcontrol.cpp
-  testcases/widgets/ut_danchor.cpp
-  # TODO break the test
-  #testcases/widgets/ut_danchors.cpp
-  testcases/widgets/ut_darrowbutton.cpp
-  testcases/widgets/ut_darrowlinedrawer.cpp
-  testcases/widgets/ut_darrowlineexpand.cpp
-  testcases/widgets/ut_darrowrectangle.cpp
-  testcases/widgets/ut_dbackgroundgroup.cpp
-  testcases/widgets/ut_dbaseexpand.cpp
-  testcases/widgets/ut_dbaseline.cpp
-  testcases/widgets/ut_dblureffectwidget.cpp
-  testcases/widgets/ut_dboxwidget.cpp
-  testcases/widgets/ut_dbuttonbox.cpp
-  testcases/widgets/ut_dcircleprogress.cpp
-  testcases/widgets/ut_dclipeffectwidget.cpp
-  testcases/widgets/ut_dcoloredprogressbar.cpp
-  testcases/widgets/ut_dcommandlinkbutton.cpp
-  testcases/widgets/ut_dcrumbedit.cpp
-  testcases/widgets/ut_ddialog.cpp
-  testcases/widgets/ut_ddialogclosebutton.cpp
-  testcases/widgets/ut_ddrawer.cpp
-  testcases/widgets/ut_ddrawergroup.cpp
-  testcases/widgets/ut_denhancedwidget.cpp
-  # TODO test break
-  #testcases/widgets/ut_dexpandgroup.cpp
-  testcases/widgets/ut_dfilechooseredit.cpp
-  testcases/widgets/ut_dfiledialog.cpp
-  testcases/widgets/ut_dfloatingbutton.cpp
-  testcases/widgets/ut_dfloatingmessage.cpp
-  testcases/widgets/ut_dfloatingwidget.cpp
-  # TODO break
-  # testcases/widgets/ut_dflowlayout.cpp
-  testcases/widgets/ut_dframe.cpp
-  testcases/widgets/ut_dgraphicsclipeffect.cpp
-  testcases/widgets/ut_dgraphicsgloweffect.cpp
-  testcases/widgets/ut_dheaderline.cpp
-  testcases/widgets/ut_diconbutton.cpp
-  testcases/widgets/ut_dinputdialog.cpp
-  testcases/widgets/ut_dipv4lineedit.cpp
-  testcases/widgets/ut_dkeysequenceedit.cpp
-  testcases/widgets/ut_dlabel.cpp
-  testcases/widgets/ut_dlineedit.cpp
-  testcases/widgets/ut_dlistview.cpp
-  testcases/widgets/ut_dloadingindicator.cpp
-  testcases/widgets/ut_dmainwindow.cpp
-  testcases/widgets/ut_dmessagemanager.cpp
-  testcases/widgets/ut_dmpriscontrol.cpp
-  testcases/widgets/ut_dpageindicator.cpp
-  testcases/widgets/ut_dpasswordedit.cpp
-  testcases/widgets/ut_dpicturesequenceview.cpp
-  # TODO PREAK
-  #testcases/widgets/ut_dprintpickcolorwidget.cpp
-  #testcases/widgets/ut_dprintpreviewdialog.cpp
-  testcases/widgets/ut_dprintpreviewwidget.cpp
-  testcases/widgets/ut_dprogressbar.cpp
-  testcases/widgets/ut_dpushbutton.cpp
-  #TODO BREAK kf.windowsystem: Could not find any platform plugin
-  # testcases/widgets/ut_dsearchcombobox.cpp
-  testcases/widgets/ut_dsearchedit.cpp
-  testcases/widgets/ut_dsettingsdialog.cpp
-  testcases/widgets/ut_dsettingswidgetfactory.cpp
-  testcases/widgets/ut_dshaowline.cpp
-  testcases/widgets/ut_dsimplelistview.cpp
-  testcases/widgets/ut_dslider.cpp
-  # TODO break
-  #testcases/widgets/ut_dspinbox.cpp
-  # testcases/widgets/ut_dspinner.cpp
-  testcases/widgets/ut_dstackwidget.cpp
-  testcases/widgets/ut_dstyleditemdelegate.cpp
-  testcases/widgets/ut_dstyleoption.cpp
-  testcases/widgets/ut_dsuggestbutton.cpp
-  testcases/widgets/ut_dswitchbutton.cpp
-  testcases/widgets/ut_dtabbar.cpp
-  testcases/widgets/ut_dtextedit.cpp
-  testcases/widgets/ut_dtickeffect.cpp
-  testcases/widgets/ut_dtiplabel.cpp
-  testcases/widgets/ut_dtitlebar.cpp
-  testcases/widgets/ut_dtoolbutton.cpp
-  testcases/widgets/ut_dtooltip.cpp
-  testcases/widgets/ut_dwarningbutton.cpp
-  # FIXME break
-  # testcases/widgets/ut_dwaterprogress.cpp
-  testcases/widgets/ut_dwindowclosebutton.cpp
-  testcases/widgets/ut_dwindowmaxbutton.cpp
-  testcases/widgets/ut_dwindowminbutton.cpp
-  testcases/widgets/ut_dwindowoptionbutton.cpp
-  testcases/widgets/ut_dwindowquitfullbutton.cpp
+    testcases/widgets/ut_daboutdialog.cpp
+    testcases/widgets/ut_dabstractdialog.cpp
+    testcases/widgets/ut_dalertcontrol.cpp
+    testcases/widgets/ut_danchor.cpp
+    # TODO break the test
+    #testcases/widgets/ut_danchors.cpp
+    testcases/widgets/ut_darrowbutton.cpp
+    testcases/widgets/ut_darrowlinedrawer.cpp
+    # TODO: Qt6 no longer support 
+    #testcases/widgets/ut_darrowlineexpand.cpp
+    testcases/widgets/ut_darrowrectangle.cpp
+    testcases/widgets/ut_dbackgroundgroup.cpp
+    # TODO: Qt6 no longer support
+    #testcases/widgets/ut_dbaseexpand.cpp
+    testcases/widgets/ut_dbaseline.cpp
+    testcases/widgets/ut_dblureffectwidget.cpp
+    testcases/widgets/ut_dboxwidget.cpp
+    testcases/widgets/ut_dbuttonbox.cpp
+    testcases/widgets/ut_dcircleprogress.cpp
+    testcases/widgets/ut_dclipeffectwidget.cpp
+    testcases/widgets/ut_dcoloredprogressbar.cpp
+    testcases/widgets/ut_dcommandlinkbutton.cpp
+    testcases/widgets/ut_dcrumbedit.cpp
+    testcases/widgets/ut_ddialog.cpp
+    testcases/widgets/ut_ddialogclosebutton.cpp
+    testcases/widgets/ut_ddrawer.cpp
+    testcases/widgets/ut_ddrawergroup.cpp
+    testcases/widgets/ut_denhancedwidget.cpp
+    # TODO test break
+    #testcases/widgets/ut_dexpandgroup.cpp
+    testcases/widgets/ut_dfilechooseredit.cpp
+    testcases/widgets/ut_dfiledialog.cpp
+    testcases/widgets/ut_dfloatingbutton.cpp
+    testcases/widgets/ut_dfloatingmessage.cpp
+    testcases/widgets/ut_dfloatingwidget.cpp
+    # TODO break
+    # testcases/widgets/ut_dflowlayout.cpp
+    testcases/widgets/ut_dframe.cpp
+    testcases/widgets/ut_dgraphicsclipeffect.cpp
+    testcases/widgets/ut_dgraphicsgloweffect.cpp
+    testcases/widgets/ut_dheaderline.cpp
+    testcases/widgets/ut_diconbutton.cpp
+    testcases/widgets/ut_dimageviewer.cpp
+    testcases/widgets/ut_dinputdialog.cpp
+    testcases/widgets/ut_dipv4lineedit.cpp
+    testcases/widgets/ut_dkeysequenceedit.cpp
+    testcases/widgets/ut_dlabel.cpp
+    testcases/widgets/ut_dlicensedialog.cpp
+    testcases/widgets/ut_dlineedit.cpp
+    testcases/widgets/ut_dlistview.cpp
+    testcases/widgets/ut_dloadingindicator.cpp
+    testcases/widgets/ut_dmainwindow.cpp
+    testcases/widgets/ut_dmessagemanager.cpp
+    testcases/widgets/ut_dmpriscontrol.cpp
+    testcases/widgets/ut_dpageindicator.cpp
+    testcases/widgets/ut_dpalettehelper.cpp
+    testcases/widgets/ut_dpasswordedit.cpp
+    testcases/widgets/ut_dpicturesequenceview.cpp
+    # TODO PREAK
+    #testcases/widgets/ut_dprintpickcolorwidget.cpp
+    #testcases/widgets/ut_dprintpreviewdialog.cpp
+    testcases/widgets/ut_dprintpreviewwidget.cpp
+    testcases/widgets/ut_dprogressbar.cpp
+    testcases/widgets/ut_dpushbutton.cpp
+    #TODO BREAK kf.windowsystem: Could not find any platform plugin
+    # testcases/widgets/ut_dsearchcombobox.cpp
+    testcases/widgets/ut_dsearchedit.cpp
+    testcases/widgets/ut_dsettingsdialog.cpp
+    testcases/widgets/ut_dsettingswidgetfactory.cpp
+    testcases/widgets/ut_dshaowline.cpp
+    testcases/widgets/ut_dsimplelistview.cpp
+    testcases/widgets/ut_dslider.cpp
+    # TODO break
+    #testcases/widgets/ut_dspinbox.cpp
+    # testcases/widgets/ut_dspinner.cpp
+    testcases/widgets/ut_dstackwidget.cpp
+    testcases/widgets/ut_dstyleditemdelegate.cpp
+    testcases/widgets/ut_dstyleoption.cpp
+    testcases/widgets/ut_dsuggestbutton.cpp
+    testcases/widgets/ut_dswitchbutton.cpp
+    testcases/widgets/ut_dswitchlineexpand.cpp
+    testcases/widgets/ut_dtabbar.cpp
+    testcases/widgets/ut_dtextedit.cpp
+    testcases/widgets/ut_dtickeffect.cpp
+    testcases/widgets/ut_dtiplabel.cpp
+    testcases/widgets/ut_dtitlebar.cpp
+    testcases/widgets/ut_dtoolbutton.cpp
+    testcases/widgets/ut_dtooltip.cpp
+    testcases/widgets/ut_dwarningbutton.cpp
+    testcases/widgets/ut_dwatermarkhelper.cpp
+    # FIXME break
+    # testcases/widgets/ut_dwaterprogress.cpp
+    testcases/widgets/ut_dwindowclosebutton.cpp
+    testcases/widgets/ut_dwindowmaxbutton.cpp
+    testcases/widgets/ut_dwindowminbutton.cpp
+    testcases/widgets/ut_dwindowoptionbutton.cpp
+    testcases/widgets/ut_dwindowquitfullbutton.cpp
+    testcases/widgets/ut_dcombobox.cpp
+    testcases/widgets/ut_dwatermarkwidget.cpp
 )
 
-include(../src/util/util.cmake)
-include(../src/widgets/widgets.cmake)
+include(${PROJECT_SOURCE_DIR}/src/util/util.cmake)
+include(${PROJECT_SOURCE_DIR}/src/widgets/widgets.cmake)
 
-add_executable(${BIN_NAME}
-  main.cpp
-  ${util_SRC}
-  ${widgets_SRC}
-  ${WIDGET_TEST}
+set(RESCOUCES data.qrc)
+
+add_executable(${BINNAME}
+    main.cpp
+    ${RESCOUCES}
+    ${UTIL}
+    ${WIDGETS}
+    ${WIDGET_TEST}
+    ${PUBLIC_HEADERS}
 )
+
+target_compile_definitions(${BINNAME} PRIVATE
+    SN_API_NOT_YET_FROZEN
+    DTK_NO_MULTIMEDIA
+    DWIDGET_TRANSLATIONS_DIR="dtk${PROJECT_VERSION_MAJOR}/DWidget/translations"
+)
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(${BIN_NAME} PRIVATE -fprofile-instr-generate -ftest-coverage)
+    target_compile_options(${BINNAME} PRIVATE -fprofile-instr-generate -ftest-coverage)
 endif()
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${BIN_NAME} PRIVATE -fprofile-arcs -ftest-coverage)
+    target_compile_options(${BINNAME} PRIVATE -fprofile-arcs -ftest-coverage)
 endif()
-target_link_libraries(${BIN_NAME} PRIVATE 
-  Qt5::Test 
-  Qt5::Widgets
-  Qt5::Core
-  Qt5::DBus
-  Qt5::PrintSupport
-  Qt5::Concurrent
-  Qt5::X11Extras
-  Qt5::Network
-  #${GLIB_LDFLAGS}
-  ${QGSettings_LIBRARIES}
-  ${STARUPNOTIFICATION_LIBRARIES}
-  ${XEXT_LIBRARIES}
-  ${XI_LIBRARIES}
-  ${DtkGui_LIBRARIES}
-  ${DtkCore_LIBRARIES}
-  ${GTEST_LIBRARIES}
-  ${X11_LIBRARIES}
-  ${XCBUTIL_LIBRARIES}
-  -lpthread
-  -lm
-  -lgcov
+
+target_compile_options(${BINNAME} PRIVATE -fno-access-control -fsanitize=address)
+target_link_options(${BINNAME} PRIVATE -fsanitize=address)
+
+target_include_directories(${BINNAME} PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/widgets
+    ${PROJECT_SOURCE_DIR}/include/DWidget
+    ${PROJECT_SOURCE_DIR}/include/util
+    ${PROJECT_SOURCE_DIR}/include/widgets
+    ${PROJECT_SOURCE_DIR}/include/global
+    ${PROJECT_SOURCE_DIR}/include
+    ${CONFIG_INCLUDE}
 )
-target_include_directories(${BIN_NAME} PUBLIC 
-  ../include/dtkwidget/util/
-  ../include/dtkwidget/global/
-  ../include/dtkwidget/DWidget/
-  ../include/dtkwidget/widgets/
-  ../include/
-  ../src/widgets/
-  #../src/platforms/x11
-  ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
-  ${Qt5Widgets_PRIVATE_INCLUDE_DIRS}
-  ${Qt5PrintSupport_PRIVATE_INCLUDE_DIRS}
-  ${QGSettings_INCLUDE_DIRS}
-  ${STARUPNOTIFICATION_INCLUDE_DIRS}
-  ${XEXT_INCLUDE_DIRS}
-  ${XI_INCLUDE_DIRS}
-  ${X11_INCLUDE_DIRS}
-  ${XCBUTIL_INCLUDE_DIRS}
-  #${GLIB_INCLUDE_DIRS}
+
+target_link_libraries(${BINNAME} PRIVATE 
+    Qt${QT_VERSION_MAJOR}::Test
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::WidgetsPrivate
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::GuiPrivate
+    Qt${QT_VERSION_MAJOR}::DBus
+    Qt${QT_VERSION_MAJOR}::PrintSupport
+    Qt${QT_VERSION_MAJOR}::PrintSupportPrivate
+    Qt${QT_VERSION_MAJOR}::Concurrent
+    Qt${QT_VERSION_MAJOR}::Network
+    PkgConfig::StartupNotification
+    PkgConfig::Xext
+    PkgConfig::Xi
+    PkgConfig::X11
+    PkgConfig::XcbUtil
+    Dtk${DTK_VERSION_MAJOR}::Gui
+    Dtk${DTK_VERSION_MAJOR}::Core
+    GTest::GTest
+    gmock
+    pthread
+    m
+    gcov
 )
-add_test(NAME ${BIN_NAME} COMMAND ${BIN_NAME})
+
+if("${QT_VERSION_MAJOR}" STREQUAL "5")
+    target_link_libraries(${BINNAME} PRIVATE
+        PkgConfig::QGSettings
+        Qt5::X11Extras
+    )
+endif()
+
+add_test(NAME ${BINNAME} COMMAND ${BINNAME})

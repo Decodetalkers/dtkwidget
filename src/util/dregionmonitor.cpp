@@ -1,9 +1,11 @@
-// SPDX-FileCopyrightText: 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2022 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "dtkwidget/util/dregionmonitor.h"
+#include "dregionmonitor.h"
 #include "private/dregionmonitor_p.h"
+
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 
 DWIDGET_BEGIN_NAMESPACE
 
@@ -78,3 +80,4 @@ DRegionMonitorPrivate::~DRegionMonitorPrivate()
 }
 
 DWIDGET_END_NAMESPACE
+#endif

@@ -1,113 +1,110 @@
-# SET the version
-#cmake_minimum_required(VERSION 3.5)
-
-set(LIB_NAME dtkwidget)
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# find_package 
-find_package(DtkGui REQUIRED)
-find_package(DtkCore REQUIRED)
-#find_package(DtkWidget REQUIRED)
-
-find_package(Qt5 REQUIRED COMPONENTS Core)
-find_package(Qt5 REQUIRED COMPONENTS Network)
-find_package(Qt5 REQUIRED COMPONENTS Concurrent)
-find_package(Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt5 REQUIRED COMPONENTS PrintSupport)
-#find_package(Qt5 REQUIRED COMPONENTS Multimedia)
-find_package(Qt5 REQUIRED COMPONENTS LinguistTools)
-
-find_package(PkgConfig REQUIRED)
-
-pkg_check_modules(QGSettings REQUIRED gsettings-qt)
-pkg_check_modules(XCBUTIL REQUIRED xcb-util) 
-pkg_check_modules(STARUPNOTIFICATION REQUIRED libstartup-notification-1.0)
-pkg_check_modules(XEXT REQUIRED xext)
-pkg_check_modules(XI REQUIRED xi)
-pkg_check_modules(X11 REQUIRED x11)
+if("${QT_VERSION_MAJOR}" STREQUAL "5")
+    pkg_check_modules(QGSettings REQUIRED IMPORTED_TARGET gsettings-qt) #Dtk6 removed.
+endif()
+pkg_check_modules(XcbUtil REQUIRED IMPORTED_TARGET xcb-util)
+pkg_check_modules(StartupNotification REQUIRED IMPORTED_TARGET libstartup-notification-1.0)
+pkg_check_modules(Xext REQUIRED IMPORTED_TARGET xext)
+pkg_check_modules(Xi REQUIRED IMPORTED_TARGET xi)
+pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
 
 include(util/util.cmake)
 include(widgets/widgets.cmake)
 
-#file(GLOB UTILHEAEDER ../include/dtkwidget/util/*.h)
-if (UNIX AND NOT APPLE)
-  set(LINUX TRUE)
+file(GLOB TRANSLATIONS translations/*.ts)
+if("${QT_VERSION_MAJOR}" STREQUAL "5")
+    qt5_add_translation(QM_FILES ${TRANSLATIONS})
+else()
+    qt6_add_translation(QM_FILES ${TRANSLATIONS})
 endif()
 
-set(CONFIGNAME ../include/dtkwidget/global/dtkwidget_config.h)
-file(WRITE ${CONFIGNAME} "// it is auto make config\n")
-file(GLOB CONFIGSOURCE ../include/dtkwidget/DWidget/*)
-
-foreach(FILENAME ${CONFIGSOURCE})
-  get_filename_component(thefile ${FILENAME} NAME)
-  file(APPEND ${CONFIGNAME} "#define DTKWIDGET_CLASS_${thefile}\n")
-endforeach()
-
-file(GLOB TRANSLATE translations/*.ts)
-qt5_add_translation(TRANSLATEDFILES ${TRANSLATE})
-
-add_definitions(-DSN_API_NOT_YET_FROZEN)
-add_definitions(-DDTK_NO_MULTIMEDIA)
-#TrainslateDir
-add_definitions(-DDWIDGET_TRANSLATIONS_DIR="libdtk-${CMAKE_PROJECT_VERSION}/DWidget/translations")
-find_package(Qt5 COMPONENTS X11Extras)
-find_package(Qt5 COMPONENTS DBus)
-add_library(${LIB_NAME} SHARED
-  ${widgets_SRC}
-  ${TRANSLATEDFILES}
-  ${util_SRC}
+add_library(${LIBNAME} SHARED
+    ${WIDGETS}
+    ${QM_FILES}
+    ${UTIL}
+    ${PUBLIC_HEADERS}
 )
-target_link_libraries(
-  ${LIB_NAME} PRIVATE
-  Qt5::Widgets
-  Qt5::Network
-  Qt5::Concurrent
-  Qt5::Core
-  Qt5::DBus
-  Qt5::X11Extras
-  Qt5::PrintSupport
-  ${DtkGui_LIBRARIES}
-  ${DtkCore_LIBRARIES}
-  ${QGSettings_LIBRARIES}
-  ${STARUPNOTIFICATION_LIBRARIES}
-  ${XEXT_LIBRARIES}
-  ${XI_LIBRARIES}
-  ${X11_LIBRARIES}
-  ${XCBUTIL_LIBRARIES}
-)
-target_include_directories(${LIB_NAME} PUBLIC
-  ../include/dtkwidget/DWidget/
-  ../include/dtkwidget/util/
-  ../include/dtkwidget/widgets/
-  ../include/dtkwidget/global/
-  ../include/
 
-  ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
-  ${Qt5Widgets_PRIVATE_INCLUDE_DIRS}
-  ${Qt5PrintSupport_PRIVATE_INCLUDE_DIRS}
-  ${QGSettings_INCLUDE_DIRS}
-  ${STARUPNOTIFICATION_INCLUDE_DIRS}
-  ${XEXT_INCLUDE_DIRS}
-  ${XI_INCLUDE_DIRS}
-  ${X11_INCLUDE_DIRS}
-  ${XCBUTIL_INCLUDE_DIRS}
+set(TRANSLATIONS_INSTALL_DIR
+    "dtk${PROJECT_VERSION_MAJOR}/DWidget/translations"
 )
-set_target_properties(${LIB_NAME} PROPERTIES
+
+target_compile_definitions(${LIBNAME} PRIVATE
+    SN_API_NOT_YET_FROZEN
+    DTK_NO_MULTIMEDIA
+    DWIDGET_TRANSLATIONS_DIR="${TRANSLATIONS_INSTALL_DIR}"
+    LIBDTKWIDGET_LIBRARY
+)
+
+if(DTK_STATIC_TRANSLATION)
+target_compile_definitions(${LIBNAME} PRIVATE
+    DTK_STATIC_TRANSLATION
+)
+endif()
+
+target_include_directories(${LIBNAME}
+PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/DWidget>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/util>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/widgets>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/global>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CONFIG_INCLUDE}>
+INTERFACE
+    $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>
+)
+
+target_link_libraries(${LIBNAME}
+PUBLIC
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Network
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::DBus
+    Qt${QT_VERSION_MAJOR}::PrintSupport
+    Dtk${DTK_VERSION_MAJOR}::Gui
+    Dtk${DTK_VERSION_MAJOR}::Core
+PRIVATE
+    Qt${QT_VERSION_MAJOR}::Concurrent
+    Qt${QT_VERSION_MAJOR}::GuiPrivate
+    Qt${QT_VERSION_MAJOR}::WidgetsPrivate
+    Qt${QT_VERSION_MAJOR}::PrintSupportPrivate
+    PkgConfig::StartupNotification
+    PkgConfig::Xext
+    PkgConfig::Xi
+    PkgConfig::X11
+    PkgConfig::XcbUtil
+)
+
+if("${QT_VERSION_MAJOR}" STREQUAL "5")
+    target_link_libraries(${LIBNAME} PRIVATE
+        PkgConfig::QGSettings
+        Qt5::X11Extras
+    )
+endif()
+
+target_link_directories(${LIBNAME} INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<INSTALL_INTERFACE:${LIBRARY_INSTALL_DIR}>
+)
+
+set_target_properties(${LIBNAME}
+    PROPERTIES
     VERSION ${CMAKE_PROJECT_VERSION}
     SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
+    EXPORT_NAME Widget
+    PUBLIC_HEADER "${PUBLIC_HEADERS}"
 )
-install(TARGETS ${LIB_NAME} DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(DIRECTORY ../include/dtkwidget/DWidget/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/libdtk-${CMAKE_PROJECT_VERSION}/DWidget/" FILES_MATCHING PATTERN "*")
-install(DIRECTORY ../include/dtkwidget/util/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/libdtk-${CMAKE_PROJECT_VERSION}/DWidget/" FILES_MATCHING PATTERN "*")
-install(DIRECTORY ../include/dtkwidget/global/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/libdtk-${CMAKE_PROJECT_VERSION}/DWidget/" FILES_MATCHING PATTERN "*")
-install(DIRECTORY ../include/dtkwidget/widgets/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/libdtk-${CMAKE_PROJECT_VERSION}/DWidget/" FILES_MATCHING PATTERN "*")
+install(
+    TARGETS ${LIBNAME}
+    EXPORT ${DtkWidget}Targets
+    DESTINATION ${LIBRARY_INSTALL_DIR}
+    PUBLIC_HEADER DESTINATION ${INCLUDE_INSTALL_DIR}
+)
 
-install(FILES ${TRANSLATEDFILES} DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/libdtk-${CMAKE_PROJECT_VERSION}/DWidget/translations")
+install(
+    EXPORT ${DtkWidget}Targets 
+    NAMESPACE Dtk${DTK_VERSION_MAJOR}:: 
+    FILE ${DtkWidget}Targets.cmake 
+    DESTINATION "${CONFIG_CMAKE_INSTALL_DIR}"
+)
+
+install(FILES ${QM_FILES} DESTINATION "${CMAKE_INSTALL_DATADIR}/${TRANSLATIONS_INSTALL_DIR}")

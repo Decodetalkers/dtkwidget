@@ -1,24 +1,28 @@
-// SPDX-FileCopyrightText: 2017 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2017 - 2023 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #include "daboutdialog.h"
+#include "dfeaturedisplaydialog.h"
 #include "private/daboutdialog_p.h"
 
 #include <dwidgetutil.h>
 #include <DSysInfo>
 #include <DGuiApplicationHelper>
-
+#include <DApplication>
+#include <DFontSizeManager>
+#include <DConfig>
+#include <QWindow>
 #include <QUrl>
 #include <QDebug>
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QIcon>
 #include <QKeyEvent>
-#include <QApplication>
 #include <QImageReader>
-#include <DSysInfo>
 #include <QScrollArea>
+#include <QPainter>
+#include <QPainterPath>
 
 #ifdef Q_OS_UNIX
 #include <unistd.h>
@@ -30,6 +34,24 @@ DWIDGET_BEGIN_NAMESPACE
 
 const QString DAboutDialogPrivate::websiteLinkTemplate = "<a href='%1' style='text-decoration: none; font-size:13px; color: #004EE5;'>%2</a>";
 
+DRedPointLabel::DRedPointLabel(QWidget *parent)
+    : QLabel(parent)
+{
+}
+
+void DRedPointLabel::paintEvent(QPaintEvent *e)
+{
+    Q_UNUSED(e)
+    QPainter painter(this);
+    QRectF rcf(0, 0, 4, 4);
+    QPainterPath path;
+    path.addEllipse(rcf);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.fillPath(path, QColor("#FF0000"));
+    painter.setPen(QColor(0, 0, 0, 255 * 0.05));
+    painter.drawEllipse(rcf);
+}
+
 DAboutDialogPrivate::DAboutDialogPrivate(DAboutDialog *qq)
     : DDialogPrivate(qq)
 {
@@ -40,7 +62,7 @@ void DAboutDialogPrivate::init()
 {
     D_Q(DAboutDialog);
 
-    q->setMinimumWidth(360);
+    q->setMaximumWidth(540);
 
     // overwrite default info if distribution config file existed.
     loadDistributionInfo();
@@ -50,9 +72,12 @@ void DAboutDialogPrivate::init()
 
     productNameLabel = new QLabel();
     productNameLabel->setObjectName("ProductNameLabel");
+    DFontSizeManager *fontManager =  DFontSizeManager::instance();
+    fontManager->bind(productNameLabel, DFontSizeManager::T5, QFont::DemiBold);
 
     versionLabel = new QLabel();
     versionLabel->setObjectName("VersionLabel");
+    fontManager->bind(versionLabel, DFontSizeManager::T8, QFont::DemiBold);
 
     companyLogoLabel = new QLabel();
     companyLogoLabel->setPixmap(loadPixmap(logoPath));
@@ -63,60 +88,99 @@ void DAboutDialogPrivate::init()
     websiteLabel->setOpenExternalLinks(false);
     updateWebsiteLabel();
 
-    acknowledgementLabel = new QLabel();
-    acknowledgementLabel->setObjectName("AcknowledgementLabel");
-    acknowledgementLabel->setContextMenuPolicy(Qt::NoContextMenu);
-    acknowledgementLabel->setOpenExternalLinks(false);
-    updateAcknowledgementLabel();
-
     descriptionLabel = new QLabel();
+    descriptionLabel->setFixedWidth(280);
     descriptionLabel->setObjectName("DescriptionLabel");
-    descriptionLabel->setAlignment(Qt::AlignHCenter);
+    descriptionLabel->setAlignment(Qt::AlignLeft);
     descriptionLabel->setWordWrap(true);
     descriptionLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    fontManager->bind(descriptionLabel, DFontSizeManager::T8, QFont::DemiBold);
 
     licenseLabel = new QLabel();
+    licenseLabel->setFixedWidth(180);
     licenseLabel->setObjectName("LicenseLabel");
     licenseLabel->setAlignment(Qt::AlignHCenter);
     licenseLabel->setWordWrap(true);
     licenseLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     licenseLabel->hide();
+    fontManager->bind(licenseLabel, DFontSizeManager::T10, QFont::Medium);
+
+    QLabel *versionTipLabel = new QLabel(QObject::tr("Version"));
+    fontManager->bind(versionTipLabel, DFontSizeManager::T10, QFont::Normal);
+    featureLabel = new QLabel(websiteLinkTemplate.arg(websiteLink).arg(QObject::tr("Features")));
+    featureLabel->setContextMenuPolicy(Qt::NoContextMenu);
+    featureLabel->setOpenExternalLinks(false);
+    if (qobject_cast<DApplication *>(qApp))
+      featureLabel->setVisible(!qApp->featureDisplayDialog()->isEmpty());
+    else
+      featureLabel->setVisible(false);
+    redPointLabel = new DRedPointLabel();
+    redPointLabel->setFixedSize(10, 10);
+    QHBoxLayout *vFeatureLayout =  new QHBoxLayout;
+    vFeatureLayout->setContentsMargins(0, 0, 0, 0);
+    vFeatureLayout->setSpacing(0);
+    vFeatureLayout->addWidget(featureLabel, 0, Qt::AlignLeft);
+    vFeatureLayout->addWidget(redPointLabel, 0, Qt::AlignLeft);
+    vFeatureLayout->addStretch(0);
+    QLabel *homePageTipLabel = new QLabel(QObject::tr("Homepage"));
+    fontManager->bind(homePageTipLabel, DFontSizeManager::T10, QFont::Normal);
+    QLabel *descriptionTipLabel = new QLabel(QObject::tr("Description"));
+    fontManager->bind(descriptionTipLabel, DFontSizeManager::T10, QFont::Normal);
+    acknowledgementTipLabel = new QLabel(QObject::tr("Acknowledgements"));
+    fontManager->bind(acknowledgementTipLabel, DFontSizeManager::T10, QFont::Normal);
+    acknowledgementLabel = new QLabel(QObject::tr("Sincerely appreciate the open-source software used."));
+    acknowledgementLabel->setFixedWidth(280);
+    acknowledgementLabel->setWordWrap(true);
+    acknowledgementLabel->setContextMenuPolicy(Qt::NoContextMenu);
+    acknowledgementLabel->setOpenExternalLinks(false);
+    fontManager->bind(acknowledgementLabel, DFontSizeManager::T8, QFont::DemiBold);
 
     q->connect(websiteLabel, SIGNAL(linkActivated(QString)), q, SLOT(_q_onLinkActivated(QString)));
-    q->connect(acknowledgementLabel, SIGNAL(linkActivated(QString)), q, SLOT(_q_onLinkActivated(QString)));
+    q->connect(featureLabel, SIGNAL(linkActivated(QString)), q, SLOT(_q_onFeatureActivated(QString)));
     q->connect(descriptionLabel, SIGNAL(linkActivated(QString)), q, SLOT(_q_onLinkActivated(QString)));
     q->connect(licenseLabel, SIGNAL(linkActivated(QString)), q, SLOT(_q_onLinkActivated(QString)));
+    q->connect(acknowledgementLabel, SIGNAL(linkActivated(QString)), q, SLOT(_q_onLicenseActivated(QString)));
 
-    QVBoxLayout *mainLayout = new QVBoxLayout;
-    mainLayout->setContentsMargins(11, 20, 11, 10);
+    QVBoxLayout *leftVLayout = new QVBoxLayout;
+    leftVLayout->setContentsMargins(10, 3, 0, 10);
+    leftVLayout->setSpacing(0);
+    leftVLayout->addWidget(logoLabel, 0, Qt::AlignCenter);
+    leftVLayout->addSpacing(8);
+    leftVLayout->addWidget(productNameLabel, 0, Qt::AlignCenter);
+    leftVLayout->addStretch(0);
+    leftVLayout->addWidget(companyLogoLabel, 0, Qt::AlignCenter);
+    leftVLayout->addSpacing(3);
+    leftVLayout->addWidget(licenseLabel, 0, Qt::AlignHCenter);
+
+    QVBoxLayout *rightVLayout = new QVBoxLayout;
+    rightVLayout->setContentsMargins(0, 3, 20, 10);
+    rightVLayout->setSpacing(0);
+    rightVLayout->addWidget(versionTipLabel, 0, Qt::AlignLeft);
+    rightVLayout->addWidget(versionLabel, 0, Qt::AlignLeft);
+    rightVLayout->addLayout(vFeatureLayout);
+    rightVLayout->addSpacing(9);
+    rightVLayout->addWidget(homePageTipLabel, 0, Qt::AlignLeft);
+    rightVLayout->addWidget(websiteLabel, 0, Qt::AlignLeft);
+    rightVLayout->addSpacing(10);
+    rightVLayout->addWidget(descriptionTipLabel, 0, Qt::AlignLeft);
+    rightVLayout->addWidget(descriptionLabel, 0, Qt::AlignLeft);
+    rightVLayout->addSpacing(10);
+    rightVLayout->addWidget(acknowledgementTipLabel, 0, Qt::AlignLeft);
+    rightVLayout->addWidget(acknowledgementLabel, 0, Qt::AlignLeft);
+    rightVLayout->addStretch(0);
+
+    QHBoxLayout *mainLayout = new QHBoxLayout;
     mainLayout->setSpacing(0);
-    mainLayout->addWidget(logoLabel);
-    mainLayout->setAlignment(logoLabel, Qt::AlignCenter);
-    mainLayout->addSpacing(3);
-    mainLayout->addWidget(productNameLabel);
-    mainLayout->setAlignment(productNameLabel, Qt::AlignCenter);
-    mainLayout->addSpacing(6);
-    mainLayout->addWidget(versionLabel);
-    mainLayout->setAlignment(versionLabel, Qt::AlignCenter);
-    mainLayout->addSpacing(8);
-    mainLayout->addWidget(companyLogoLabel);
-    mainLayout->setAlignment(companyLogoLabel, Qt::AlignCenter);
-//    mainLayout->addSpacing(6);
-    mainLayout->addWidget(websiteLabel);
-    mainLayout->setAlignment(websiteLabel, Qt::AlignCenter);
-    mainLayout->addSpacing(5);
-//    mainLayout->addWidget(acknowledgementLabel);
-//    mainLayout->setAlignment(acknowledgementLabel, Qt::AlignCenter);
-    mainLayout->addSpacing(12);
-    mainLayout->addWidget(descriptionLabel, Qt::AlignHCenter);
-    mainLayout->addSpacing(7);
-    mainLayout->addWidget(licenseLabel, Qt::AlignHCenter);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->addLayout(leftVLayout);
+    mainLayout->addSpacing(29);
+    mainLayout->addLayout(rightVLayout);
 
     QScrollArea *mainScrollArea = new QScrollArea;
     QWidget  *mainContent = new QWidget;
     QPalette scrollPalette;
 
-    scrollPalette.setBrush(QPalette::Background, Qt::transparent);
+    scrollPalette.setBrush(QPalette::Window, Qt::transparent);
     mainScrollArea->setFrameShape(QFrame::NoFrame);
     mainScrollArea->setWidget(mainContent);
     mainScrollArea->setWidgetResizable(true);
@@ -125,6 +189,9 @@ void DAboutDialogPrivate::init()
     mainContent->setLayout(mainLayout);
     q->addContent(mainScrollArea);
 
+    DConfig config("org.deepin.dtk.preference");
+    bool isUpdated = config.value("featureUpdated", false).toBool();
+    redPointLabel->setVisible(isUpdated);
     // make active
     q->setFocus();
 }
@@ -143,15 +210,26 @@ void DAboutDialogPrivate::updateWebsiteLabel()
     websiteLabel->setText(websiteText);
 }
 
-void DAboutDialogPrivate::updateAcknowledgementLabel()
-{
-    QString acknowledgementText = QString(websiteLinkTemplate).arg(acknowledgementLink).arg(QApplication::translate("DAboutDialog", "Acknowledgements"));
-    acknowledgementLabel->setText(acknowledgementText);
-}
-
 void DAboutDialogPrivate::_q_onLinkActivated(const QString &link)
 {
     DGUI_NAMESPACE::DGuiApplicationHelper::openUrl(link);
+}
+
+void DAboutDialogPrivate::_q_onFeatureActivated(const QString &)
+{
+    D_Q(DAboutDialog);
+    DConfig config("org.deepin.dtk.preference");
+    if (config.value("featureUpdated", false).toBool()) {
+        config.setValue("featureUpdated", false);
+        redPointLabel->setVisible(false);
+    }
+    Q_EMIT q->featureActivated();
+}
+
+void DAboutDialogPrivate::_q_onLicenseActivated(const QString &)
+{
+    D_Q(DAboutDialog);
+    Q_EMIT q->licenseActivated();
 }
 
 QPixmap DAboutDialogPrivate::loadPixmap(const QString &file)
@@ -180,13 +258,14 @@ QPixmap DAboutDialogPrivate::loadPixmap(const QString &file)
 }
 
 /*!
-  \class Dtk::Widget::DAboutDialog
-  \inmodule dtkwidget
-  \brief DAboutDialog 类提供了应用程序的关于对话框，规范所有 deepin 应用关于窗口设计规范，符合 Deepin 风格.
-  
-  使用 DMainWindow 创建的窗口都可以在菜单点关于弹出关于窗口，一般不需要手动创建。
-  
-  为了提供简便操作，可通过 DApplication 来设置关于对话框展示内容。
+@~english
+  @class Dtk::Widget::DAboutDialog
+  @ingroup dtkwidget
+  @brief The DaboutDialog class provides the application about dialog boxes that specify all Deepin applications about window design specifications, which meets the deepin style.
+
+  The windows created using dmainwindow can be made in the menu about the pop -up window. Generally, it is not necessary to create manually.
+
+  In order to provide simple operations, the content of the dialog box can be set through dapplication。
  */
 
 DAboutDialog::DAboutDialog(QWidget *parent)
@@ -198,10 +277,9 @@ DAboutDialog::DAboutDialog(QWidget *parent)
 }
 
 /*!
-  \property DAboutDialog::windowTitle
-  
-  \brief the title of the dialog.
-  \brief 返回关于对话框窗口的标题.
+@~english
+  @property DAboutDialog::windowTitle
+  @brief the title of the dialog.
  */
 QString DAboutDialog::windowTitle() const
 {
@@ -209,10 +287,10 @@ QString DAboutDialog::windowTitle() const
 }
 
 /*!
-  \property DAboutDialog::productName
-  
-  \brief the product name to be shown on the dialog.
-  \brief 返回对话框显示的应用名称.
+@~english
+  @property DAboutDialog::productName
+
+  @brief the product name to be shown on the dialog.
  */
 QString DAboutDialog::productName() const
 {
@@ -222,10 +300,11 @@ QString DAboutDialog::productName() const
 }
 
 /*!
-  \property DAboutDialog::version
-  
-  \brief the version number to be shown on the dialog.
-  \brief 返回关于对话框显示的版本.
+@~english
+  @property DAboutDialog::version
+
+  @brief the version number to be shown on the dialog.
+  @brief 返回关于对话框显示的版本.
  */
 QString DAboutDialog::version() const
 {
@@ -235,10 +314,11 @@ QString DAboutDialog::version() const
 }
 
 /*!
-  \property DAboutDialog::description
+@~english
+  @property DAboutDialog::description
 
-  \brief the description to be show on the dialog.
-  \brief 返回关于对话框显示的描述.
+  @brief the description to be show on the dialog.
+  @brief 返回关于对话框显示的描述.
  */
 QString DAboutDialog::description() const
 {
@@ -248,10 +328,15 @@ QString DAboutDialog::description() const
 }
 
 /*!
-  \brief the vendor logo to be shown on the dialog.
-  \return 返回对话框中的公司/组织 logo 图片.
+@~english
+  @brief the vendor logo to be shown on the dialog.
+  @return 返回对话框中的公司/组织 logo 图片.
  */
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 const QPixmap *DAboutDialog::companyLogo() const
+#else
+QPixmap DAboutDialog::companyLogo() const
+#endif
 {
     D_DC(DAboutDialog);
 
@@ -259,12 +344,10 @@ const QPixmap *DAboutDialog::companyLogo() const
 }
 
 /*!
-  \property DAboutDialog::websiteName
-  \brief the vendor website name to be shown on the dialog.
-  \brief 返回对话框中显示的公司/组织网站名称.
-  
+@~english
+  @property DAboutDialog::websiteName
+  @brief the vendor website name to be shown on the dialog.
   Usually be in form like www.deepin.org.
-  通常采用 www.deepin.org 等形式。
  */
 QString DAboutDialog::websiteName() const
 {
@@ -274,13 +357,12 @@ QString DAboutDialog::websiteName() const
 }
 
 /*!
-  \property DAboutDialog::websiteLink
-  \brief the corresponding web address of websiteName().
-  \brief 返回 websiteName() 相应的网址.
-  
+@~english
+  @property DAboutDialog::websiteLink
+  @brief the corresponding web address of websiteName().
+  @brief 返回 websiteName() 相应的网址.
   The website link will be open in the browser if the user clicks on
   the website text shown on the dialog.
-  如果用户点击对话框中显示的网址，则会打开相应的链接。
  */
 QString DAboutDialog::websiteLink() const
 {
@@ -290,24 +372,21 @@ QString DAboutDialog::websiteLink() const
 }
 
 /*!
-  \property DAboutDialog::acknowledgementLink
-
-  \brief the web address to be open open when user clicks on the "Acknowlegement"
+@~english
+  @property DAboutDialog::acknowledgementLink
+  @brief the web address to be open open when user clicks on the "Acknowlegement"
   text show on the dialog.
-  \brief 返回鸣谢链接地址.
  */
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
 QString DAboutDialog::acknowledgementLink() const
 {
-    D_DC(DAboutDialog);
-
-    return d->acknowledgementLink;
+    return QString();
 }
-
+#endif
 /*!
-  \property DAboutDialog::license
-
-  \brief the license to be shown on the dialog.
-  \brief 对话框显示的许可证.
+@~english
+  @property DAboutDialog::license
+  @brief the license to be shown on the dialog.
  */
 QString DAboutDialog::license() const
 {
@@ -316,10 +395,21 @@ QString DAboutDialog::license() const
     return d->licenseLabel->text();
 }
 
-/*!
-  \brief 设置对话框窗口标题.
+void DAboutDialog::setLicenseEnabled(bool enabled)
+{
+    D_D(DAboutDialog);
+    QString ack = QObject::tr("Sincerely appreciate the open-source software used.");
+    if (enabled) {
+        QString tmp = QObject::tr("open-source software");
+        ack = ack.replace(tmp, d->websiteLinkTemplate.arg(d->websiteLink).arg(tmp));
+    }
+    d->acknowledgementLabel->setText(ack);
+}
 
-  \a windowTitle 窗口标题字符串.
+/*!
+@~english
+  @brief Set the title of the dialog box window.
+  \a Window title string.
  */
 void DAboutDialog::setWindowTitle(const QString &windowTitle)
 {
@@ -327,20 +417,26 @@ void DAboutDialog::setWindowTitle(const QString &windowTitle)
 }
 
 /*!
-  \brief 设置展示的 \a icon 图标.
-  
-  在关于对话框展示的图标.
+@~english
+  @brief Set the icon icon displayed.
+
+  In the icon of the dialog box display.
  */
 void DAboutDialog::setProductIcon(const QIcon &icon)
 {
     D_D(DAboutDialog);
-
-    d->logoLabel->setPixmap(icon.pixmap(windowHandle(), QSize(96, 96)));
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    d->logoLabel->setPixmap(icon.pixmap(windowHandle(), QSize(128, 128)));
+#else
+    winId(); // TODO: wait for checking
+    auto window = windowHandle();
+    d->logoLabel->setPixmap(icon.pixmap(window->baseSize(), window->screen()->devicePixelRatio()));
+#endif
 }
 
 /*!
-  \brief 设置应用名称.
-  \a productName 产品名称.
+@~english
+  @brief Set the application name.
  */
 void DAboutDialog::setProductName(const QString &productName)
 {
@@ -350,7 +446,8 @@ void DAboutDialog::setProductName(const QString &productName)
 }
 
 /*!
-  \brief 此函数用于设置指定的 \a version 版本信息.
+@~english
+  @brief This function is used to set the specified version information.
  */
 void DAboutDialog::setVersion(const QString &version)
 {
@@ -360,7 +457,8 @@ void DAboutDialog::setVersion(const QString &version)
 }
 
 /*!
-  \brief 此函数用于设置指定的 \a description 描述信息.
+@~english
+  @brief This function is used to set the specified description description information.
  */
 void DAboutDialog::setDescription(const QString &description)
 {
@@ -370,7 +468,8 @@ void DAboutDialog::setDescription(const QString &description)
 }
 
 /*!
-  \brief 此函数用于设置指定的 \a companyLogo 组织标志.
+@~english
+  @brief This function is used to set the specified CompanyLogo organization logo.
  */
 void DAboutDialog::setCompanyLogo(const QPixmap &companyLogo)
 {
@@ -380,7 +479,8 @@ void DAboutDialog::setCompanyLogo(const QPixmap &companyLogo)
 }
 
 /*!
-  \brief 此函数用于设置指定的 \a websiteName 网站名称
+@~english
+  @brief This function is used to set the specified websitename website name
  */
 void DAboutDialog::setWebsiteName(const QString &websiteName)
 {
@@ -395,7 +495,8 @@ void DAboutDialog::setWebsiteName(const QString &websiteName)
 }
 
 /*!
-  \brief 此函数用于设置指定的 \a websiteLink 网站链接
+@~english
+  @brief This function is used to set the specified WebSitelink website link
  */
 void DAboutDialog::setWebsiteLink(const QString &websiteLink)
 {
@@ -410,28 +511,28 @@ void DAboutDialog::setWebsiteLink(const QString &websiteLink)
 }
 
 /*!
-  \brief 此函数用于设置指定的 \a acknowledgementLink 鸣谢链接
+@~english
+  @brief This function is used to set the specified ACKNOWLEDGEMENTLINK Link
  */
-void DAboutDialog::setAcknowledgementLink(const QString &acknowledgementLink)
+#if DTK_VERSION < DTK_VERSION_CHECK(6, 0, 0, 0)
+void DAboutDialog::setAcknowledgementLink(const QString &)
+{
+}
+#endif
+/*!
+@~english
+  @brief This function is used to set the specified Visible settings to set the gratitude link to display
+ */
+void DAboutDialog::setAcknowledgementVisible(bool isVisible)
 {
     D_D(DAboutDialog);
-
-    d->acknowledgementLink = acknowledgementLink;
-    d->updateAcknowledgementLabel();
+    d->acknowledgementTipLabel->setVisible(isVisible);
+    d->acknowledgementLabel->setVisible(isVisible);
 }
 
 /*!
-  \brief 此函数用于设置指定的 \a visible 设置鸣谢链接是否显示
- */
-void DAboutDialog::setAcknowledgementVisible(bool visible)
-{
-    Q_UNUSED(visible)
-    D_D(DAboutDialog);
-//    d->acknowledgementLabel->setVisible(visible);
-}
-
-/*!
-  \brief 此函数用于设置指定的 \a license 许可证.
+@~english
+  @brief This function is used to set the specified License license.
  */
 void DAboutDialog::setLicense(const QString &license)
 {
